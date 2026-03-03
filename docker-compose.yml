@@ -1,0 +1,60 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    depends_on:
+      cx-db:
+        condition: service_healthy
+      customer-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  cx-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mcdr
+      POSTGRES_PASSWORD: mcdr_secret
+      POSTGRES_DB: mcdr
+    ports:
+      - "5432:5432"
+    volumes:
+      - cx_data:/var/lib/postgresql/data
+      - ./db/init_cx.sql:/docker-entrypoint-initdb.d/01_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcdr"]
+      interval: 5s
+      retries: 5
+
+  customer-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mcdr_readonly
+      POSTGRES_PASSWORD: readonly_secret
+      POSTGRES_DB: mcdr_customers
+    ports:
+      - "5433:5432"
+    volumes:
+      - customer_data:/var/lib/postgresql/data
+      - ./db/init_customer.sql:/docker-entrypoint-initdb.d/01_init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mcdr_readonly"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
+volumes:
+  cx_data:
+  customer_data:
