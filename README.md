@@ -412,9 +412,36 @@ Every response includes:
 | `X-Frame-Options` | `DENY` |
 | `X-XSS-Protection` | `1; mode=block` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
-| `Cache-Control` | `no-store` |
-| `Strict-Transport-Security` | `max-age=31536000` (production only) |
+| `Cache-Control` | `no-store, no-cache, must-revalidate, private` |
+| `Pragma` | `no-cache` |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains; preload` (production only) |
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; ...` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` |
 | `X-Request-ID` | Unique per request (for log correlation) |
+
+### Data Security — At Rest
+
+| Layer | Mechanism |
+|-------|-----------|
+| Passwords | bcrypt with random salt — never stored in plaintext |
+| JWT secrets | `SECRET_KEY` env var, validated ≥ 32 chars in production |
+| Audit logs | 30+ sensitive fields recursively masked as `***` up to 5 levels deep |
+| Token storage | `sessionStorage` — cleared when browser tab closes |
+| Database (POC) | SQLite on local disk |
+| Database (Production) | PostgreSQL with SSL (`DATABASE_SSL=require` or `verify-full`) |
+
+### Data Security — In Transit
+
+| Control | Implementation |
+|---------|---------------|
+| HSTS with preload | Forces HTTPS after first visit, eligible for browser preload lists |
+| CSP | Restricts script, style, frame, and connection origins to `self` |
+| Permissions-Policy | Disables camera, microphone, geolocation, and payment APIs |
+| CORS | Origins from env, restricted methods and headers |
+| Auth token | Sent via `Authorization: Bearer` header only — never in URLs or cookies |
+| DB connections | PostgreSQL SSL configurable via `DATABASE_SSL` env var |
+
+> For the complete data security deep-dive, OWASP Top 10 compliance matrix, and production checklist, see **[docs/SECURITY.md](docs/SECURITY.md)**.
 
 ### Input Validation
 

@@ -16,6 +16,8 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
+    database_ssl: str = ""  # "" (off), "require", or "verify-full"
+
     redis_url: str = "redis://localhost:6379/0"
     log_level: str = "INFO"
 

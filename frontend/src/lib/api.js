@@ -1,12 +1,12 @@
 const API_BASE = '/api';
 
-let token = localStorage.getItem('mcdr_token');
+let token = sessionStorage.getItem('mcdr_token');
 let onUnauthorized = null;
 
 export function setToken(t) {
   token = t;
-  if (t) localStorage.setItem('mcdr_token', t);
-  else localStorage.removeItem('mcdr_token');
+  if (t) sessionStorage.setItem('mcdr_token', t);
+  else sessionStorage.removeItem('mcdr_token');
 }
 
 export function getToken() {

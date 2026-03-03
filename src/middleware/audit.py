@@ -19,9 +19,16 @@ from src.models.audit import AuditLog
 
 logger = logging.getLogger("mcdr.audit")
 
-SKIP_PATHS = {"/api/health", "/health", "/docs", "/openapi.json", "/favicon.ico"}
+SKIP_PATHS = {"/api/health", "/health", "/health/ready", "/docs", "/openapi.json", "/favicon.ico"}
 
-SENSITIVE_FIELDS = {"password", "hashed_password", "access_token", "token", "secret"}
+SENSITIVE_FIELDS = frozenset({
+    "password", "hashed_password", "new_password", "old_password", "confirm_password",
+    "access_token", "refresh_token", "token", "api_key", "apikey",
+    "secret", "secret_key", "client_secret",
+    "authorization", "cookie",
+    "credit_card", "card_number", "cvv", "ssn", "national_id",
+    "pin", "otp", "verification_code",
+})
 
 _RESOURCE_ID_PATTERN = re.compile(
     r"/api/(?:cx/)?(?:cases|calls|escalations|investors|agents|users|qa/evaluations|qa/case|qa/agent|sla/breaches)/(\d+)"
@@ -36,13 +43,24 @@ def _extract_resource_id(path: str) -> int | None:
 def _get_client_ip(request: Request) -> str | None:
     forwarded = request.headers.get("x-forwarded-for")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        ip = forwarded.split(",")[0].strip()
+        if ip and len(ip) <= 45:
+            return ip
     return request.client.host if request.client else None
 
 
-def _sanitize(data: dict) -> dict:
-    """Remove sensitive fields from logged payloads."""
-    return {k: "***" if k in SENSITIVE_FIELDS else v for k, v in data.items()}
+def _sanitize_deep(data, depth: int = 0):
+    """Recursively sanitize sensitive fields at any nesting level."""
+    if depth > 5:
+        return "[nested]"
+    if isinstance(data, dict):
+        return {
+            k: "***" if k.lower() in SENSITIVE_FIELDS else _sanitize_deep(v, depth + 1)
+            for k, v in data.items()
+        }
+    if isinstance(data, list):
+        return [_sanitize_deep(item, depth + 1) for item in data[:20]]
+    return data
 
 
 class AuditMiddleware(BaseHTTPMiddleware):
@@ -71,8 +89,7 @@ class AuditMiddleware(BaseHTTPMiddleware):
             if body_bytes:
                 try:
                     parsed = json.loads(body_bytes)
-                    if isinstance(parsed, dict):
-                        parsed = _sanitize(parsed)
+                    parsed = _sanitize_deep(parsed)
                     body_summary = json.dumps(parsed)[:1000]
                 except (json.JSONDecodeError, UnicodeDecodeError):
                     body_summary = "(binary or unparsable)"

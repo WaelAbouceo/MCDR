@@ -28,7 +28,7 @@ export default function Login() {
 
   // Clear stale token on mount
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useState(() => { localStorage.removeItem('mcdr_token'); setToken(null); });
+  useState(() => { sessionStorage.removeItem('mcdr_token'); setToken(null); });
 
   const doLogin = async (u, p) => {
     setError('');

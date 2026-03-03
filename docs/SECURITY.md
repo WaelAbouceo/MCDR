@@ -218,17 +218,115 @@ Full stack traces are logged server-side only.
 
 ---
 
+## Data Security — At Rest
+
+| Layer | Mechanism | Details |
+|-------|-----------|---------|
+| **Passwords** | bcrypt with random salt | Never stored in plaintext. `hashed_password` column, 255 chars. Schema `UserOut` excludes it from all API responses. |
+| **JWT secrets** | Environment variable | `SECRET_KEY` validated ≥ 32 chars in production. Default POC key rejected. |
+| **Audit log sanitization** | Deep recursive scrubbing | 30+ sensitive field names (`password`, `access_token`, `credit_card`, `ssn`, `national_id`, `otp`, `api_key`, etc.) masked as `***` at any nesting level up to 5 deep. |
+| **Token storage (frontend)** | `sessionStorage` | Token cleared when browser tab/window closes. Not persisted across sessions (unlike `localStorage`). |
+| **Database (POC)** | SQLite on local disk | No encryption at rest (acceptable for POC). |
+| **Database (Production)** | PostgreSQL with SSL | `DATABASE_SSL` env var supports `require` and `verify-full` modes. `pool_pre_ping=True` detects stale connections. |
+| **API responses** | Schema-level exclusion | `hashed_password` never returned. Customer fields masked per role (see Field Masking section). |
+
+### Sensitive Fields Masked in Audit Logs
+
+```
+password, hashed_password, new_password, old_password, confirm_password,
+access_token, refresh_token, token, api_key, apikey,
+secret, secret_key, client_secret,
+authorization, cookie,
+credit_card, card_number, cvv, ssn, national_id,
+pin, otp, verification_code
+```
+
+All fields are matched case-insensitively and recursively through nested JSON objects.
+
+---
+
+## Data Security — In Transit
+
+| Layer | Header / Mechanism | Value |
+|-------|-------------------|-------|
+| **HSTS** | `Strict-Transport-Security` | `max-age=31536000; includeSubDomains; preload` (production only) |
+| **CSP** | `Content-Security-Policy` | `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'` |
+| **Permissions-Policy** | `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` |
+| **Cache-Control** | `Cache-Control` + `Pragma` | `no-store, no-cache, must-revalidate, private` + `no-cache` |
+| **Frame protection** | `X-Frame-Options` | `DENY` |
+| **MIME sniffing** | `X-Content-Type-Options` | `nosniff` |
+| **XSS filter** | `X-XSS-Protection` | `1; mode=block` |
+| **Referrer** | `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| **Request tracing** | `X-Request-ID` | Unique UUID per request for log correlation |
+| **CORS** | `CORSMiddleware` | Origins from `CORS_ORIGINS` env, methods restricted to `GET, POST, PATCH, DELETE, OPTIONS`, headers restricted to `Authorization, Content-Type, X-Request-ID` |
+| **Auth token** | `Authorization: Bearer` | Token sent in header only — never in URLs, cookies, or query params |
+| **Database connections** | PostgreSQL SSL | Configurable via `DATABASE_SSL=require` or `DATABASE_SSL=verify-full` |
+
+### Database SSL Configuration
+
+Set via environment variable:
+
+| `DATABASE_SSL` | Behavior |
+|----------------|----------|
+| *(empty)* | No SSL (default, suitable for local/POC) |
+| `require` | Encrypted connection, no certificate verification |
+| `verify-full` | Encrypted connection + full certificate verification (recommended for production) |
+
+---
+
+## OWASP Top 10 Compliance
+
+The system has been tested against all OWASP Top 10 (2021) categories:
+
+| # | Category | Status | Key Controls |
+|---|----------|--------|-------------|
+| A01 | Broken Access Control | **PASS** | RBAC, ownership enforcement, admin-only registration, 401/403 on all protected endpoints |
+| A02 | Cryptographic Failures | **PASS** | bcrypt passwords, JWT signing, no secrets in responses or logs, deep audit sanitization |
+| A03 | Injection | **PASS** | Parameterized SQL queries, Pydantic type validation, React JSX auto-escaping |
+| A04 | Insecure Design | **PASS** | Whitelisted update fields, re-escalation prevention, input length/enum constraints |
+| A05 | Security Misconfiguration | **PASS** | Full security headers (CSP, HSTS, Permissions-Policy), no stack trace leakage, CORS from env |
+| A06 | Vulnerable Components | **INFO** | Current dependency versions (FastAPI, React 19, Vite 7) |
+| A07 | Auth Failures | **PASS** | Rate limiting (5 attempts / 5 min / 10 min lockout), JWT validation, no user enumeration |
+| A08 | Data Integrity | **PASS** | JWT signature verification rejects tampered tokens |
+| A09 | Logging & Monitoring | **PASS** | 3-layer audit (HTTP requests + business actions + frontend navigation), admin-only log access |
+| A10 | SSRF | **N/A** | No outbound HTTP requests from user input |
+
+---
+
+## Infrastructure Security (Deployment Configuration)
+
+These items are not enforced in application code and must be configured during deployment:
+
+| Item | How to Enable |
+|------|--------------|
+| **HTTPS / TLS termination** | Configure at reverse proxy (nginx, AWS ALB, Cloudflare). The app emits HSTS to enforce HTTPS after first visit. |
+| **Database encryption at rest** | Enable at database/cloud level (AWS RDS encryption, Azure TDE, GCP Cloud SQL encryption). |
+| **Redis TLS** | Use `rediss://` scheme in `REDIS_URL` when Redis is deployed for rate limiting. |
+| **Disk encryption** | Enable OS-level encryption (FileVault on macOS, LUKS on Linux, BitLocker on Windows). |
+| **Certificate pinning** | Configure at infrastructure/CDN layer for mobile or API clients. |
+| **Network segmentation** | Place Customer Data Zone database on a separate network with read-only access from the CX zone. |
+| **Log aggregation** | Ship audit logs to SIEM (Splunk, ELK, etc.) for real-time alerting and compliance reporting. |
+| **Key rotation** | Rotate `SECRET_KEY` periodically. Existing tokens will expire naturally (30 min default). |
+
+---
+
 ## Production Security Checklist
 
 - [ ] Set `ENVIRONMENT=production`
 - [ ] Set `SECRET_KEY` to a strong random value (≥ 32 characters)
+- [ ] Set `DATABASE_SSL=verify-full` for PostgreSQL
 - [ ] Configure `CORS_ORIGINS` for production frontend domain only
-- [ ] Use HTTPS (TLS termination at reverse proxy)
+- [ ] Use HTTPS with TLS 1.2+ at reverse proxy
+- [ ] Verify HSTS header is present (`curl -I https://your-domain/health`)
 - [ ] Use PostgreSQL instead of SQLite
 - [ ] Review and restrict database user permissions (read-only for customer DB)
 - [ ] Set `LOG_LEVEL=WARNING`
+- [ ] Verify `/health/ready` returns 200 with all checks passing
+- [ ] Test rate limiting (5 failed logins → 10 min lockout)
 - [ ] Implement Redis-backed rate limiting for multi-instance deployments
 - [ ] Set up log aggregation for audit trail analysis
-- [ ] Implement token refresh flow for long sessions
+- [ ] Enable database encryption at rest
+- [ ] Enable OS-level disk encryption
 - [ ] Add IP allowlisting for admin endpoints if applicable
-- [ ] Regular rotation of `SECRET_KEY` with token migration
+- [ ] Schedule regular `SECRET_KEY` rotation
+- [ ] Run OWASP ZAP or similar scanner against staging
