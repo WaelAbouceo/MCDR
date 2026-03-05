@@ -36,14 +36,19 @@ export default function Dashboard() {
   const [recentCases, setRecentCases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [adminData, setAdminData] = useState(null);
+  const [myPerf, setMyPerf] = useState(null);
 
   useEffect(() => {
     async function load() {
       try {
-        if (role === 'agent') {
-          const [agentStats, agentCases] = await Promise.all([
+        const isAgentRole = role === 'agent' || role === 'senior_agent';
+        if (isAgentRole) {
+          const hasPerfAccess = role === 'senior_agent';
+          const [agentStats, agentCases, perf, qaData] = await Promise.all([
             cx.agentStats(user.id).catch(() => null),
             cx.agentCases(user.id, 50).catch(() => []),
+            hasPerfAccess ? cx.agentPerformance(user.id).catch(() => null) : Promise.resolve(null),
+            cx.agentQa(user.id).catch(() => null),
           ]);
           setRecentCases(agentCases.slice(0, 10));
           setStats({
@@ -51,6 +56,7 @@ export default function Dashboard() {
             calls: { total_calls: agentStats?.total_calls ?? 0 },
             sla: null,
           });
+          setMyPerf({ performance: perf, qa: qaData });
         } else {
           const [caseStats, callStats, slaStats] = await Promise.all([
             cx.caseStats().catch(() => null),
@@ -98,7 +104,7 @@ export default function Dashboard() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold">
-          {role === 'agent' ? 'My Dashboard' : role === 'admin' ? 'Admin Dashboard' : 'Operations Dashboard'}
+          {(role === 'agent' || role === 'senior_agent') ? 'My Dashboard' : role === 'admin' ? 'Admin Dashboard' : 'Operations Dashboard'}
         </h1>
         <p className="text-slate-500 mt-1">
           Welcome back, {user?.full_name}
@@ -108,7 +114,7 @@ export default function Dashboard() {
       {/* Operations Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          label={role === 'agent' ? 'My Cases' : 'Total Cases'}
+          label={(role === 'agent' || role === 'senior_agent') ? 'My Cases' : 'Total Cases'}
           value={caseS.total_cases ?? '—'}
           icon={FolderOpen}
           color="indigo"
@@ -121,12 +127,12 @@ export default function Dashboard() {
           sub={`${byStatus.open || 0} new · ${byStatus.in_progress || 0} in progress`}
         />
         <StatCard
-          label={role === 'agent' ? 'My Calls' : 'Total Calls'}
+          label={(role === 'agent' || role === 'senior_agent') ? 'My Calls' : 'Total Calls'}
           value={callS.total_calls ?? '—'}
           icon={PhoneCall}
           color="green"
         />
-        {role === 'agent' ? (
+        {(role === 'agent' || role === 'senior_agent') ? (
           <StatCard
             label="Resolved"
             value={(byStatus.resolved || 0) + (byStatus.closed || 0)}
@@ -143,6 +149,53 @@ export default function Dashboard() {
           />
         )}
       </div>
+
+      {/* My Performance — Agent self-view */}
+      {(role === 'agent' || role === 'senior_agent') && myPerf && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <BarChart3 size={18} className="text-indigo-600" /> My Performance
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {myPerf.qa?.avg_score != null && (
+              <div className="card p-4 text-center">
+                <div className={`text-2xl font-bold ${
+                  myPerf.qa.avg_score >= 80 ? 'text-green-600' :
+                  myPerf.qa.avg_score >= 60 ? 'text-yellow-600' : 'text-red-600'
+                }`}>
+                  {myPerf.qa.avg_score?.toFixed(1)}
+                </div>
+                <div className="text-xs text-slate-500 mt-1">QA Score (avg)</div>
+              </div>
+            )}
+            {myPerf.qa?.total_evaluations != null && (
+              <div className="card p-4 text-center">
+                <div className="text-2xl font-bold text-slate-700">{myPerf.qa.total_evaluations}</div>
+                <div className="text-xs text-slate-500 mt-1">QA Reviews</div>
+              </div>
+            )}
+            {myPerf.performance?.avg_resolution_minutes != null && (
+              <div className="card p-4 text-center">
+                <div className="text-2xl font-bold text-slate-700">
+                  {Math.round(myPerf.performance.avg_resolution_minutes)}m
+                </div>
+                <div className="text-xs text-slate-500 mt-1">Avg Resolution</div>
+              </div>
+            )}
+            {myPerf.performance?.sla_compliance_pct != null && (
+              <div className="card p-4 text-center">
+                <div className={`text-2xl font-bold ${
+                  myPerf.performance.sla_compliance_pct >= 90 ? 'text-green-600' :
+                  myPerf.performance.sla_compliance_pct >= 70 ? 'text-yellow-600' : 'text-red-600'
+                }`}>
+                  {myPerf.performance.sla_compliance_pct?.toFixed(0)}%
+                </div>
+                <div className="text-xs text-slate-500 mt-1">SLA Compliance</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {(role === 'supervisor' || role === 'admin') && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -236,9 +289,9 @@ export default function Dashboard() {
 
       <div>
         <h2 className="text-lg font-semibold mb-3">
-          {role === 'agent' ? 'My Recent Cases' : 'Recent Cases'}
+          {(role === 'agent' || role === 'senior_agent') ? 'My Recent Cases' : 'Recent Cases'}
         </h2>
-        <CaseTable cases={recentCases} showAgent={role !== 'agent'} />
+        <CaseTable cases={recentCases} showAgent={role !== 'agent' && role !== 'senior_agent'} />
       </div>
     </div>
   );

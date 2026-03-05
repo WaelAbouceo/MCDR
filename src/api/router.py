@@ -1,19 +1,34 @@
 from fastapi import APIRouter
 
-from src.api import audit, auth, cases, customers, cx_data, escalations, qa, registry, reports, simulate, sla, telephony, users
+from src.api import (
+    approvals, audit, auth, cases, customers, cx_data, escalations,
+    outbound, qa, registry, reports, simulate, sla, telephony, users,
+    verification,
+)
 
-api_router = APIRouter(prefix="/api")
+_sub_routers = [
+    auth.router,
+    users.router,
+    telephony.router,
+    cases.router,
+    escalations.router,
+    sla.router,
+    customers.router,
+    registry.router,
+    qa.router,
+    cx_data.router,
+    simulate.router,
+    audit.router,
+    reports.router,
+    outbound.router,
+    verification.router,
+    approvals.router,
+]
 
-api_router.include_router(auth.router)
-api_router.include_router(users.router)
-api_router.include_router(telephony.router)
-api_router.include_router(cases.router)
-api_router.include_router(escalations.router)
-api_router.include_router(sla.router)
-api_router.include_router(customers.router)
-api_router.include_router(registry.router)
-api_router.include_router(qa.router)
-api_router.include_router(cx_data.router)
-api_router.include_router(simulate.router)
-api_router.include_router(audit.router)
-api_router.include_router(reports.router)
+api_router = APIRouter(prefix="/api/v1")
+for r in _sub_routers:
+    api_router.include_router(r)
+
+legacy_router = APIRouter(prefix="/api")
+for r in _sub_routers:
+    legacy_router.include_router(r)

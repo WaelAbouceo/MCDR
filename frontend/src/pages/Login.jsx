@@ -2,17 +2,17 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { setToken } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { LogIn } from 'lucide-react';
-
 const DEMO_USERS = [
-  { username: 'agent1', password: 'agent123', label: 'Agent (Daniel)', role: 'agent' },
-  { username: 'supervisor1', password: 'super123', label: 'Supervisor (Judy)', role: 'supervisor' },
-  { username: 'qa1', password: 'qa1234', label: 'QA (Jonathon)', role: 'qa_analyst' },
-  { username: 'admin1', password: 'admin123', label: 'Admin (Ashley)', role: 'admin' },
+  { username: 'agent11', password: 'agent123', label: 'T1 Agent — وكيل', role: 'agent' },
+  { username: 'agent1', password: 'agent123', label: 'T2 Senior — وكيل أول', role: 'agent_t2' },
+  { username: 'supervisor1', password: 'super123', label: 'Supervisor — مشرف', role: 'supervisor' },
+  { username: 'qa1', password: 'qa1234', label: 'QA — جودة', role: 'qa_analyst' },
+  { username: 'admin1', password: 'admin123', label: 'Admin — مدير', role: 'admin' },
 ];
 
 const ROLE_COLORS = {
   agent: 'border-blue-200 bg-blue-50 hover:border-blue-400',
+  agent_t2: 'border-amber-200 bg-amber-50 hover:border-amber-400',
   supervisor: 'border-purple-200 bg-purple-50 hover:border-purple-400',
   qa_analyst: 'border-teal-200 bg-teal-50 hover:border-teal-400',
   admin: 'border-red-200 bg-red-50 hover:border-red-400',
@@ -70,11 +70,9 @@ export default function Login() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-indigo-600 mb-4">
-            <LogIn size={32} className="text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white">MCDR Case Manager</h1>
-          <p className="text-indigo-300 mt-2">GoChat247 CX Operations Platform</p>
+          <img src="/mcdr-logo.svg" alt="MCDR" className="w-20 h-20 mx-auto mb-4" />
+          <h1 className="text-3xl font-bold text-white">MCDR CX Platform</h1>
+          <p className="text-indigo-300 mt-2">GoChat247 — منصة خدمة العملاء</p>
         </div>
 
         <div className="card p-6">

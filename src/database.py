@@ -1,3 +1,4 @@
+import logging
 import ssl
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -5,6 +6,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 from src.config import get_settings
 
+logger = logging.getLogger("mcdr.database")
 settings = get_settings()
 
 POC_MODE = settings.database_url.startswith("sqlite")
@@ -23,7 +25,7 @@ else:
         _ssl_ctx = ssl.create_default_context()
         if settings.database_ssl == "require":
             _ssl_ctx.check_hostname = False
-            _ssl_ctx.verify_mode = ssl.CERT_NONE
+            _ssl_ctx.verify_mode = ssl.CERT_REQUIRED
         _pg_connect_args["ssl"] = _ssl_ctx
 
     cx_engine = create_async_engine(
@@ -32,6 +34,7 @@ else:
         pool_size=20,
         max_overflow=10,
         pool_timeout=30,
+        pool_recycle=3600,
         pool_pre_ping=True,
         connect_args=_pg_connect_args,
     )
@@ -41,6 +44,7 @@ else:
         pool_size=5,
         max_overflow=2,
         pool_timeout=30,
+        pool_recycle=3600,
         pool_pre_ping=True,
         connect_args=_pg_connect_args,
     )
@@ -59,17 +63,29 @@ class CustomerBase(DeclarativeBase):
 
 async def get_cx_db() -> AsyncSession:
     async with CxSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def get_customer_db() -> AsyncSession:
     async with CustomerSessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def init_db():
     """Create all tables (used in POC/SQLite mode)."""
-    async with cx_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    async with customer_engine.begin() as conn:
-        await conn.run_sync(CustomerBase.metadata.create_all)
+    try:
+        async with cx_engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        async with customer_engine.begin() as conn:
+            await conn.run_sync(CustomerBase.metadata.create_all)
+    except Exception as e:
+        logger.error("Database initialization failed: %s", e, exc_info=True)
+        raise

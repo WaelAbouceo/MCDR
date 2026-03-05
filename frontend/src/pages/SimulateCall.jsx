@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { simulate, users } from '../lib/api';
+import { useState, useEffect, useMemo } from 'react';
+import { simulate, users, cx } from '../lib/api';
 import { StatusBadge } from '../components/StatusBadge';
 import { PhoneCall, User, Briefcase, AlertTriangle, CheckCircle, Radio, Clock } from 'lucide-react';
 
@@ -7,16 +7,28 @@ export default function SimulateCall() {
   const [ani, setAni] = useState('');
   const [queue, setQueue] = useState('general');
   const [targetAgent, setTargetAgent] = useState('');
+  const [callReason, setCallReason] = useState('');
   const [agentList, setAgentList] = useState([]);
+  const [taxonomy, setTaxonomy] = useState([]);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const reasonOptions = useMemo(() => {
+    const grouped = {};
+    taxonomy.forEach(t => {
+      if (!grouped[t.category]) grouped[t.category] = [];
+      grouped[t.category].push(t);
+    });
+    return grouped;
+  }, [taxonomy]);
 
   useEffect(() => {
     users.list().then(list => {
       const agents = (list || []).filter(u => u.role?.name === 'agent' || u.role_name === 'agent');
       setAgentList(agents);
     }).catch(() => {});
+    cx.taxonomy().then(setTaxonomy).catch(() => {});
   }, []);
 
   const handleSimulate = async (e) => {
@@ -25,7 +37,7 @@ export default function SimulateCall() {
     setError('');
     setResult(null);
     try {
-      const data = await simulate.incomingCall(ani || '', queue, targetAgent || undefined);
+      const data = await simulate.incomingCall(ani || '', queue, targetAgent || undefined, callReason || undefined);
       setResult(data);
     } catch (err) {
       setError(err.message);
@@ -67,6 +79,21 @@ export default function SimulateCall() {
               <option value="technical">Technical</option>
               <option value="priority">Priority / VIP</option>
               <option value="retention">Retention</option>
+            </select>
+          </div>
+          <div className="min-w-[200px]">
+            <label className="label">Call Reason</label>
+            <select value={callReason} onChange={(e) => setCallReason(e.target.value)} className="input">
+              <option value="">— None —</option>
+              {Object.entries(reasonOptions).map(([cat, items]) => (
+                <optgroup key={cat} label={cat}>
+                  {items.map(t => (
+                    <option key={t.taxonomy_id} value={t.taxonomy_id}>
+                      {t.subcategory}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
             </select>
           </div>
           <div>
@@ -183,7 +210,7 @@ export default function SimulateCall() {
                     <div className="flex justify-between">
                       <dt className="text-slate-500">Total Value</dt>
                       <dd className="font-bold text-green-600">
-                        {sp.portfolio_summary.total_value?.toLocaleString('en-US', { style: 'currency', currency: 'SAR' })}
+                        {sp.portfolio_summary.total_value?.toLocaleString('en-US', { style: 'currency', currency: 'EGP' })}
                       </dd>
                     </div>
                   </dl>
@@ -281,6 +308,31 @@ export default function SimulateCall() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Call Reason */}
+          {sp?.call_reason && (
+            <div className="card p-5">
+              <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">
+                <PhoneCall size={16} className="text-blue-500" /> Call Reason
+              </h3>
+              <dl className="flex gap-6 flex-wrap text-sm">
+                <div>
+                  <dt className="text-slate-500">Category</dt>
+                  <dd className="font-medium">{sp.call_reason.category}</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-500">Subcategory</dt>
+                  <dd className="font-medium">{sp.call_reason.subcategory}</dd>
+                </div>
+                {sp.call_reason.description && (
+                  <div>
+                    <dt className="text-slate-500">Description</dt>
+                    <dd>{sp.call_reason.description}</dd>
+                  </div>
+                )}
+              </dl>
             </div>
           )}
 

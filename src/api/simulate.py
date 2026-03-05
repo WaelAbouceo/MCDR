@@ -20,10 +20,11 @@ async def simulate_call(
     ani: str | None = Query(default=None, description="Caller phone number (ANI). Random if omitted."),
     queue: str | None = Query(default=None, description="Target queue"),
     agent_id: int | None = Query(default=None, description="Target agent ID. Random if omitted."),
+    call_reason: int | None = Query(default=None, description="Taxonomy ID for call reason"),
     _: User = Depends(RequirePermission(Resource.CALL, Action.READ)),
 ):
     """Simulate a Cisco IVR incoming call. Pushes screen-pop to the assigned agent's queue."""
-    return simulate_incoming_call(ani=ani, queue=queue, target_agent_id=agent_id)
+    return simulate_incoming_call(ani=ani, queue=queue, target_agent_id=agent_id, call_reason_id=call_reason)
 
 
 @router.get("/incoming")

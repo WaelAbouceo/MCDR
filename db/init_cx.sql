@@ -88,12 +88,37 @@ CREATE TABLE IF NOT EXISTS sla_policies (
     is_active              BOOLEAN DEFAULT TRUE
 );
 
+-- ============================================================
+-- IDENTITY VERIFICATION
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS verification_sessions (
+    id              SERIAL PRIMARY KEY,
+    investor_id     INT,
+    agent_id        INT REFERENCES users(id) NOT NULL,
+    call_id         INT REFERENCES calls(id),
+    method          VARCHAR(20) DEFAULT 'verbal',
+    status          VARCHAR(20) DEFAULT 'pending',
+    steps_completed TEXT DEFAULT '{}',
+    steps_required  TEXT DEFAULT '["full_name","national_id","mobile_number","account_status"]',
+    failure_reason  VARCHAR(500),
+    notes           TEXT,
+    created_at      TIMESTAMPTZ DEFAULT NOW(),
+    verified_at     TIMESTAMPTZ,
+    expires_at      TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_verif_investor ON verification_sessions(investor_id);
+CREATE INDEX IF NOT EXISTS idx_verif_agent    ON verification_sessions(agent_id);
+CREATE INDEX IF NOT EXISTS idx_verif_status   ON verification_sessions(status);
+
 CREATE TABLE IF NOT EXISTS cases (
     id                SERIAL PRIMARY KEY,
     call_id           INT REFERENCES calls(id),
     customer_id       INT,
     agent_id          INT REFERENCES users(id) NOT NULL,
     taxonomy_id       INT REFERENCES case_taxonomy(id),
+    verification_id   INT REFERENCES verification_sessions(id),
     priority          VARCHAR(20) DEFAULT 'medium',
     status            VARCHAR(20) DEFAULT 'open',
     subject           VARCHAR(300) NOT NULL,
@@ -101,8 +126,12 @@ CREATE TABLE IF NOT EXISTS cases (
     sla_policy_id     INT REFERENCES sla_policies(id),
     first_response_at TIMESTAMPTZ,
     resolved_at       TIMESTAMPTZ,
+    closed_at         TIMESTAMPTZ,
     created_at        TIMESTAMPTZ DEFAULT NOW(),
-    updated_at        TIMESTAMPTZ DEFAULT NOW()
+    updated_at        TIMESTAMPTZ DEFAULT NOW(),
+    pending_seconds   INT DEFAULT 0,
+    pending_since     TIMESTAMPTZ,
+    resolution_code   VARCHAR(50)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cases_status   ON cases(status);
@@ -222,14 +251,65 @@ CREATE INDEX IF NOT EXISTS idx_qa_eval_agent ON qa_evaluations(agent_id);
 CREATE INDEX IF NOT EXISTS idx_qa_eval_case  ON qa_evaluations(case_id);
 
 -- ============================================================
+-- KNOWLEDGE BASE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS kb_articles (
+    id          SERIAL PRIMARY KEY,
+    title       VARCHAR(300) NOT NULL,
+    category    VARCHAR(100) NOT NULL,
+    content     TEXT NOT NULL,
+    tags        VARCHAR(500),
+    author_id   INT REFERENCES users(id),
+    is_published BOOLEAN DEFAULT TRUE,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_kb_category ON kb_articles(category);
+
+-- ============================================================
+-- APPROVALS
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS approvals (
+    id              SERIAL PRIMARY KEY,
+    case_id         INT REFERENCES cases(id) ON DELETE CASCADE,
+    requested_by    INT REFERENCES users(id),
+    reviewed_by     INT REFERENCES users(id),
+    approval_type   VARCHAR(50) NOT NULL,
+    amount          NUMERIC(12, 2),
+    description     TEXT NOT NULL,
+    status          VARCHAR(20) DEFAULT 'pending',
+    reviewer_notes  TEXT,
+    requested_at    TIMESTAMPTZ DEFAULT NOW(),
+    reviewed_at     TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_approvals_case   ON approvals(case_id);
+CREATE INDEX IF NOT EXISTS idx_approvals_status ON approvals(status);
+
+-- ============================================================
+-- AGENT PRESENCE
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS agent_presence (
+    agent_id    INT PRIMARY KEY REFERENCES users(id),
+    status      VARCHAR(20) DEFAULT 'offline',
+    updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ============================================================
 -- SEED DATA
 -- ============================================================
 
 INSERT INTO roles (name, description) VALUES
     ('admin',       'Full system access'),
-    ('supervisor',  'Team lead / supervisor access'),
-    ('agent',       'Front-line agent'),
-    ('qa_analyst',  'Quality assurance evaluator')
+    ('supervisor',  'Operations supervisor'),
+    ('agent',       'Front-line T1 agent'),
+    ('qa_analyst',  'Quality assurance evaluator'),
+    ('team_lead',   'Team lead — manages a squad of agents'),
+    ('senior_agent','Senior T2 agent — handles escalations and complex cases')
 ON CONFLICT (name) DO NOTHING;
 
 INSERT INTO sla_policies (name, priority, first_response_minutes, resolution_minutes) VALUES

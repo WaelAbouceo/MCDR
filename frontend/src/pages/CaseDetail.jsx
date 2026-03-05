@@ -6,6 +6,7 @@ import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { useToast } from '../components/Toast';
 import Loader from '../components/Loader';
 import { formatDistanceToNow, format } from 'date-fns';
+import VerificationWizard from '../components/VerificationWizard';
 import {
   ArrowLeft,
   User,
@@ -17,6 +18,7 @@ import {
   History,
   Briefcase,
   PhoneCall,
+  Shield,
 } from 'lucide-react';
 
 export default function CaseDetail() {
@@ -37,6 +39,8 @@ export default function CaseDetail() {
   const [sending, setSending] = useState(false);
   const [tab, setTab] = useState('notes');
   const [statusUpdate, setStatusUpdate] = useState('');
+  const [resolutionCode, setResolutionCode] = useState('');
+  const [allowedStatuses, setAllowedStatuses] = useState([]);
 
   useEffect(() => {
     loadCase();
@@ -48,17 +52,17 @@ export default function CaseDetail() {
       const c = await cx.getCase(caseId);
       setCaseData(c);
 
-      const [cNotes, cHistory, cEsc, cQa] = await Promise.all([
-        cx.getCase(caseId).then(d => d?.notes).catch(() => []),
-        cx.getCase(caseId).then(d => d?.history).catch(() => []),
+      const [cEsc, cQa, transitions] = await Promise.all([
         cx.escalations(caseId).catch(() => []),
         cx.caseQa(caseId).catch(() => []),
+        casesApi.transitions(caseId).catch(() => ({ allowed: [] })),
       ]);
 
-      setNotes(c?.notes || cNotes || []);
-      setHistory(c?.history || cHistory || []);
+      setNotes(c?.notes || []);
+      setHistory(c?.history || []);
       setEscalationList(cEsc || []);
       setQaEvals(cQa || []);
+      setAllowedStatuses(transitions?.allowed || []);
 
       if (c?.investor_id) {
         const inv = await registry.investorProfile(c.investor_id).catch(() => null);
@@ -87,12 +91,30 @@ export default function CaseDetail() {
     }
   }
 
+  const RESOLUTION_CODES = [
+    { value: 'fixed', label: 'Fixed' },
+    { value: 'information_provided', label: 'Information Provided' },
+    { value: 'account_updated', label: 'Account Updated' },
+    { value: 'duplicate', label: 'Duplicate' },
+    { value: 'cannot_reproduce', label: 'Cannot Reproduce' },
+    { value: 'referred_third_party', label: 'Referred to Third Party' },
+    { value: 'customer_withdrew', label: 'Customer Withdrew' },
+    { value: 'wont_fix', label: "Won't Fix" },
+  ];
+
   async function handleStatusChange() {
     if (!statusUpdate) return;
+    if (statusUpdate === 'resolved' && !resolutionCode) {
+      toast('Please select a resolution code', 'warning');
+      return;
+    }
     try {
-      await casesApi.update(caseId, { status: statusUpdate });
+      const payload = { status: statusUpdate };
+      if (statusUpdate === 'resolved') payload.resolution_code = resolutionCode;
+      await casesApi.update(caseId, payload);
       toast(`Status changed to ${statusUpdate.replace(/_/g, ' ')}`, 'success');
       setStatusUpdate('');
+      setResolutionCode('');
       await loadCase();
     } catch (err) {
       toast(err.message || 'Failed to update status', 'error');
@@ -187,9 +209,7 @@ export default function CaseDetail() {
                 { key: 'notes', label: 'Notes', icon: MessageSquare, count: notes.length },
                 { key: 'history', label: 'History', icon: History, count: history.length },
                 { key: 'escalations', label: 'Escalations', icon: AlertTriangle, count: escalationList.length },
-                ...(role === 'qa_analyst' || role === 'admin'
-                  ? [{ key: 'qa', label: 'QA', icon: Briefcase, count: qaEvals.length }]
-                  : []),
+                { key: 'qa', label: 'QA', icon: Briefcase, count: qaEvals.length },
               ].map(({ key, label, icon: Icon, count }) => (
                 <button
                   key={key}
@@ -214,27 +234,25 @@ export default function CaseDetail() {
             <div className="p-5">
               {tab === 'notes' && (
                 <div className="space-y-4">
-                  {(role === 'agent' || role === 'admin' || role === 'supervisor') && (
-                    <form onSubmit={handleAddNote} className="flex gap-2">
+                  <form onSubmit={handleAddNote} className="flex gap-2">
+                    <input
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      placeholder="Add a note..."
+                      className="input flex-1"
+                    />
+                    <label className="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap">
                       <input
-                        value={noteText}
-                        onChange={(e) => setNoteText(e.target.value)}
-                        placeholder="Add a note..."
-                        className="input flex-1"
+                        type="checkbox"
+                        checked={noteInternal}
+                        onChange={(e) => setNoteInternal(e.target.checked)}
                       />
-                      <label className="flex items-center gap-1 text-xs text-slate-500 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={noteInternal}
-                          onChange={(e) => setNoteInternal(e.target.checked)}
-                        />
-                        Internal
-                      </label>
-                      <button type="submit" disabled={sending} className="btn-primary text-sm py-2 px-3">
-                        <Send size={14} />
-                      </button>
-                    </form>
-                  )}
+                      Internal
+                    </label>
+                    <button type="submit" disabled={sending} className="btn-primary text-sm py-2 px-3">
+                      <Send size={14} />
+                    </button>
+                  </form>
 
                   {notes.length === 0 ? (
                     <p className="text-sm text-slate-400 text-center py-4">No notes yet</p>
@@ -275,7 +293,7 @@ export default function CaseDetail() {
                           </p>
                           <p className="text-xs text-slate-400 mt-0.5">
                             {h.changed_at ? format(new Date(h.changed_at), 'MMM d, HH:mm') : ''}
-                            {h.changed_by && ` by ${h.changed_by}`}
+                            {(h.changed_by_name || h.changed_by) && ` by ${h.changed_by_name || h.changed_by}`}
                           </p>
                         </div>
                       </div>
@@ -330,26 +348,43 @@ export default function CaseDetail() {
         {/* Sidebar */}
         <div className="space-y-4">
           {/* Actions */}
-          {(role === 'agent' || role === 'supervisor' || role === 'admin') && (
+          {role !== 'qa_analyst' && (
             <div className="card p-5 space-y-3">
               <h3 className="text-sm font-semibold text-slate-600">Actions</h3>
-              <div className="flex gap-2">
-                <select
-                  value={statusUpdate}
-                  onChange={(e) => setStatusUpdate(e.target.value)}
-                  className="input flex-1"
-                >
-                  <option value="">Change Status</option>
-                  <option value="in_progress">In Progress</option>
-                  <option value="pending_customer">Pending Customer</option>
-                  <option value="resolved">Resolved</option>
-                  <option value="closed">Closed</option>
-                </select>
-                <button onClick={handleStatusChange} disabled={!statusUpdate} className="btn-primary text-sm">
-                  Update
-                </button>
-              </div>
-              {(role === 'agent' || role === 'supervisor' || role === 'admin') && c.status !== 'escalated' && (
+              {allowedStatuses.length > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <select
+                      value={statusUpdate}
+                      onChange={(e) => { setStatusUpdate(e.target.value); setResolutionCode(''); }}
+                      className="input flex-1"
+                    >
+                      <option value="">Change Status</option>
+                      {allowedStatuses.map(s => (
+                        <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
+                      ))}
+                    </select>
+                    <button onClick={handleStatusChange} disabled={!statusUpdate} className="btn-primary text-sm">
+                      Update
+                    </button>
+                  </div>
+                  {statusUpdate === 'resolved' && (
+                    <select
+                      value={resolutionCode}
+                      onChange={(e) => setResolutionCode(e.target.value)}
+                      className="input w-full"
+                    >
+                      <option value="">Select Resolution Code *</option>
+                      {RESOLUTION_CODES.map(rc => (
+                        <option key={rc.value} value={rc.value}>{rc.label}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 italic">No status transitions available (terminal state)</p>
+              )}
+              {role !== 'qa_analyst' && c.status !== 'escalated' && (
                 showEscalateForm ? (
                   <div className="space-y-2">
                     <textarea
@@ -376,6 +411,15 @@ export default function CaseDetail() {
             </div>
           )}
 
+          {/* Verification */}
+          {role !== 'qa_analyst' && (
+            <VerificationWizard
+              investorId={c.investor_id}
+              callId={c.call_id}
+              caseId={caseId}
+            />
+          )}
+
           {/* Case Details */}
           <div className="card p-5">
             <h3 className="text-sm font-semibold text-slate-600 mb-3">Case Details</h3>
@@ -392,10 +436,24 @@ export default function CaseDetail() {
                 <dt className="text-slate-500">Agent</dt>
                 <dd>{c.agent_name || c.agent_id || '—'}</dd>
               </div>
+              {c.resolution_code && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Resolution</dt>
+                  <dd className="capitalize text-xs font-medium text-green-700 bg-green-50 px-1.5 py-0.5 rounded">
+                    {c.resolution_code.replace(/_/g, ' ')}
+                  </dd>
+                </div>
+              )}
               {c.resolved_at && (
                 <div className="flex justify-between">
                   <dt className="text-slate-500">Resolved</dt>
                   <dd className="text-xs">{format(new Date(c.resolved_at), 'MMM d, HH:mm')}</dd>
+                </div>
+              )}
+              {c.pending_seconds > 0 && (
+                <div className="flex justify-between">
+                  <dt className="text-slate-500">Pending Time</dt>
+                  <dd className="text-xs">{Math.round(c.pending_seconds / 60)}m</dd>
                 </div>
               )}
               {c.sla_status && (
@@ -495,7 +553,7 @@ export default function CaseDetail() {
                     <div className="flex justify-between">
                       <dt className="text-slate-500">Portfolio Value</dt>
                       <dd className="font-medium">
-                        {investor.portfolio.total_value?.toLocaleString('en-US', { style: 'currency', currency: 'SAR' })}
+                        {investor.portfolio.total_value?.toLocaleString('en-US', { style: 'currency', currency: 'EGP' })}
                       </dd>
                     </div>
                   </>

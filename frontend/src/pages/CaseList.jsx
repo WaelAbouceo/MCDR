@@ -23,7 +23,8 @@ export default function CaseList() {
     setLoading(true);
     try {
       let data;
-      if (role === 'agent') {
+      const isAgent = role === 'agent' || role === 'senior_agent';
+      if (isAgent) {
         data = await cx.agentCases(user.id);
       } else {
         data = await cx.searchCases({ limit: 100, ...filters });
@@ -54,7 +55,7 @@ export default function CaseList() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">
-          {role === 'agent' ? 'My Cases' : 'All Cases'}
+          {(role === 'agent' || role === 'senior_agent') ? 'My Cases' : 'All Cases'}
         </h1>
         <span className="text-sm text-slate-500">{filtered.length} cases</span>
       </div>
@@ -97,7 +98,7 @@ export default function CaseList() {
         </div>
       </div>
 
-      {loading ? <Loader /> : <CaseTable cases={filtered} showAgent={role !== 'agent'} />}
+      {loading ? <Loader /> : <CaseTable cases={filtered} showAgent={role !== 'agent' && role !== 'senior_agent'} />}
     </div>
   );
 }

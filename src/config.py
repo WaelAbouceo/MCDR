@@ -4,15 +4,19 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings
 
 
+_POC_SECRET = "poc-secret-key-change-in-production"
+
+
 class Settings(BaseSettings):
     environment: str = "development"  # development | staging | production
 
     database_url: str = "sqlite+aiosqlite:///./mcdr_mock/mcdr_cx.db"
     customer_db_url: str = "sqlite+aiosqlite:///./mcdr_mock/mcdr_cx.db"
 
-    secret_key: str = "poc-secret-key-change-in-production"
+    secret_key: str = _POC_SECRET
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
 
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
@@ -31,15 +35,33 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    @property
+    def is_production(self) -> bool:
+        return self.environment == "production"
+
     def validate_for_production(self) -> None:
-        if self.environment == "production":
-            if "poc-secret" in self.secret_key or len(self.secret_key) < 32:
+        logger = logging.getLogger("mcdr")
+
+        if self.is_production:
+            if self.secret_key == _POC_SECRET or len(self.secret_key) < 32:
                 raise ValueError(
-                    "SECRET_KEY must be at least 32 characters and not the default POC key"
+                    "SECRET_KEY must be at least 32 characters and not the default POC key. "
+                    "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
                 )
-            if "localhost" in self.cors_origins:
-                logging.getLogger("mcdr").warning(
-                    "CORS_ORIGINS contains localhost — verify this is intentional for production"
+            if "localhost" in self.cors_origins or "127.0.0.1" in self.cors_origins:
+                raise ValueError(
+                    "CORS_ORIGINS must not contain localhost in production"
+                )
+            if self.access_token_expire_minutes > 60:
+                logger.warning(
+                    "ACCESS_TOKEN_EXPIRE_MINUTES=%d is > 60 min — consider shorter tokens with refresh",
+                    self.access_token_expire_minutes,
+                )
+        elif self.environment != "development":
+            if self.secret_key == _POC_SECRET:
+                logger.warning(
+                    "Using default POC secret key in %s — set SECRET_KEY env var",
+                    self.environment,
                 )
 
 

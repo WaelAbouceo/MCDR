@@ -177,7 +177,7 @@ export default function InvestorSearch() {
                       <dd className="text-xl font-bold text-green-600">
                         {selected.portfolio.total_value?.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                       </dd>
-                      <dt className="text-xs text-slate-500">Total Value (SAR)</dt>
+                      <dt className="text-xs text-slate-500">Total Value (EGP)</dt>
                     </div>
                   </dl>
                   {selected.portfolio.sectors && Object.keys(selected.portfolio.sectors).length > 0 && (

@@ -15,6 +15,9 @@ import AuditLogs from './pages/AuditLogs';
 import UserManagement from './pages/UserManagement';
 import SimulateCall from './pages/SimulateCall';
 import InvestorSearch from './pages/InvestorSearch';
+import OutboundQueue from './pages/OutboundQueue';
+import Reports from './pages/Reports';
+import KnowledgeBase from './pages/KnowledgeBase';
 import Loader from './components/Loader';
 import { ToastProvider } from './components/Toast';
 
@@ -47,23 +50,23 @@ function AppRoutes() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/cases" element={<CaseList />} />
         <Route path="/cases/new" element={
-          <ProtectedRoute allowedRoles={['agent', 'admin', 'supervisor']}>
+          <ProtectedRoute allowedRoles={['agent', 'senior_agent', 'team_lead', 'admin', 'supervisor']}>
             <CreateCase />
           </ProtectedRoute>
         } />
         <Route path="/cases/:caseId" element={<CaseDetail />} />
         <Route path="/escalations" element={
-          <ProtectedRoute allowedRoles={['supervisor', 'admin']}>
+          <ProtectedRoute allowedRoles={['senior_agent', 'team_lead', 'supervisor', 'admin']}>
             <Escalations />
           </ProtectedRoute>
         } />
         <Route path="/sla" element={
-          <ProtectedRoute allowedRoles={['supervisor', 'admin']}>
+          <ProtectedRoute allowedRoles={['senior_agent', 'team_lead', 'supervisor', 'admin']}>
             <SLAMonitor />
           </ProtectedRoute>
         } />
         <Route path="/team" element={
-          <ProtectedRoute allowedRoles={['supervisor', 'admin']}>
+          <ProtectedRoute allowedRoles={['team_lead', 'supervisor', 'admin']}>
             <Team />
           </ProtectedRoute>
         } />
@@ -93,8 +96,23 @@ function AppRoutes() {
           </ProtectedRoute>
         } />
         <Route path="/investor-search" element={
-          <ProtectedRoute allowedRoles={['agent', 'supervisor', 'admin']}>
+          <ProtectedRoute allowedRoles={['agent', 'senior_agent', 'team_lead', 'supervisor', 'admin']}>
             <InvestorSearch />
+          </ProtectedRoute>
+        } />
+        <Route path="/outbound" element={
+          <ProtectedRoute allowedRoles={['agent', 'senior_agent', 'team_lead', 'supervisor', 'admin']}>
+            <OutboundQueue />
+          </ProtectedRoute>
+        } />
+        <Route path="/reports" element={
+          <ProtectedRoute allowedRoles={['team_lead', 'supervisor', 'admin']}>
+            <Reports />
+          </ProtectedRoute>
+        } />
+        <Route path="/kb" element={
+          <ProtectedRoute allowedRoles={['agent', 'senior_agent', 'team_lead', 'supervisor', 'admin']}>
+            <KnowledgeBase />
           </ProtectedRoute>
         } />
       </Route>

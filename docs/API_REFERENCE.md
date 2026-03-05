@@ -198,7 +198,25 @@ Create a new user account.
 | subject | 3–300 chars |
 | description | max 5,000 chars |
 
-**Errors:** 403 Agents can only modify their own cases, 404 Case not found
+**Status transitions are enforced.** See [Case Lifecycle](./CASE_LIFECYCLE.md) for the full transition map. Invalid transitions return HTTP 422.
+
+**Errors:** 403 Agents can only modify their own cases, 404 Case not found, 422 Invalid status transition
+
+### GET `/cases/{case_id}/transitions`
+
+**Auth:** `case:read`
+
+Returns the list of valid next statuses for the case's current state. Used by the frontend to populate the status dropdown.
+
+**Response (200):**
+```json
+{
+  "current_status": "in_progress",
+  "allowed": ["closed", "escalated", "pending_customer", "resolved"]
+}
+```
+
+If the case is in a terminal state (`closed`), `allowed` will be an empty array.
 
 ### POST `/cases/{case_id}/notes`
 

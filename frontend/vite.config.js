@@ -7,6 +7,7 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
+      '/api/v1': 'http://localhost:8100',
       '/api': 'http://localhost:8100',
       '/health': 'http://localhost:8100',
     },

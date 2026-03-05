@@ -16,15 +16,20 @@ DB_PATH = "mcdr_mock/mcdr_cx.db"
 
 ROLES = [
     (1, "admin", "Full system administrator"),
-    (2, "supervisor", "Team lead / supervisor"),
-    (3, "agent", "Front-line CX agent"),
+    (2, "supervisor", "Operations supervisor"),
+    (3, "agent", "Front-line T1 agent"),
     (4, "qa_analyst", "Quality assurance evaluator"),
+    (5, "team_lead", "Team lead — manages a squad of agents"),
+    (6, "senior_agent", "Senior T2 agent — handles escalations"),
 ]
 
 TEST_USERS = [
-    {"username": "agent1",      "password": "agent123", "role_id": 3},
-    {"username": "agent2",      "password": "agent123", "role_id": 3},
+    {"username": "agent1",      "password": "agent123", "role_id": 6},
+    {"username": "agent2",      "password": "agent123", "role_id": 6},
+    {"username": "agent11",     "password": "agent123", "role_id": 3},
+    {"username": "agent12",     "password": "agent123", "role_id": 3},
     {"username": "supervisor1", "password": "super123", "role_id": 2},
+    {"username": "tl1",         "password": "lead123",  "role_id": 5},
     {"username": "qa1",         "password": "qa1234",   "role_id": 4},
     {"username": "admin1",      "password": "admin123", "role_id": 1},
 ]
@@ -73,7 +78,7 @@ c.executescript("""
 for role in ROLES:
     c.execute("INSERT INTO roles VALUES (?, ?, ?, NULL)", role)
 
-role_map = {"agent": 3, "supervisor": 2, "qa_analyst": 4, "admin": 1}
+role_map = {"agent": 3, "senior_agent": 6, "supervisor": 2, "qa_analyst": 4, "admin": 1, "team_lead": 5}
 
 cx_users = c.execute("SELECT * FROM cx_users ORDER BY user_id").fetchall()
 print(f"Found {len(cx_users)} CX users")
@@ -102,11 +107,14 @@ Seeded auth tables into {DB_PATH}
   Users:  {len(cx_users)} (from cx_users, {len(passwords_set)} with passwords)
 
 Test logins:
-  agent1      / agent123     (user_id=1,  role=agent)
-  agent2      / agent123     (user_id=2,  role=agent)
-  supervisor1 / super123     (user_id=61, role=supervisor)
-  qa1         / qa1234       (user_id=73, role=qa_analyst)
-  admin1      / admin123     (user_id=81, role=admin)
+  agent1      / agent123     (user_id=1,  role=senior_agent, tier2)
+  agent2      / agent123     (user_id=2,  role=senior_agent, tier2)
+  agent11     / agent123     (user_id=11, role=agent, tier1 — front-line)
+  agent12     / agent123     (user_id=12, role=agent, tier1 — front-line)
+  tl1         / lead123      (user_id=61, role=team_lead)
+  supervisor1 / super123     (user_id=66, role=supervisor)
+  qa1         / qa1234       (user_id=78, role=qa_analyst)
+  admin1      / admin123     (user_id=86, role=admin)
 """)
 
 conn.close()

@@ -5,7 +5,10 @@ escalation logs, QA evaluations, and agent performance.
 All endpoints are audit-logged for regulatory compliance.
 """
 
-from fastapi import APIRouter, Depends, Query
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.exceptions import NotFoundError
@@ -13,9 +16,22 @@ from src.core.permissions import Action, Resource
 from src.database import get_cx_db
 from src.middleware.auth import RequirePermission
 from src.models.user import User
+
+
+class PresenceBody(BaseModel):
+    status: Literal["available", "on_break", "acw", "in_call", "training", "offline"]
 from src.services import audit_service, cx_data_service
 
 router = APIRouter(prefix="/cx", tags=["cx-data"])
+
+
+# ─── Taxonomy ────────────────────────────────────────────────────
+
+@router.get("/taxonomy")
+async def list_taxonomy(
+    _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
+):
+    return cx_data_service.list_taxonomy()
 
 
 # ─── Calls ───────────────────────────────────────────────────────
@@ -199,6 +215,16 @@ async def case_qa_evaluations(
     return cx_data_service.get_qa_evaluations(case_id)
 
 
+# ─── Reports (SQLite-based for POC) ─────────────────────────────
+
+@router.get("/reports/overview")
+async def report_overview(
+    days: int = Query(default=7, ge=1, le=90),
+    _: User = Depends(RequirePermission(Resource.REPORT, Action.READ)),
+):
+    return cx_data_service.report_overview(days)
+
+
 # ─── Agent Performance ──────────────────────────────────────────
 
 @router.get("/agents/{agent_id}/stats")
@@ -215,3 +241,83 @@ async def agent_performance(
     _: User = Depends(RequirePermission(Resource.REPORT, Action.READ)),
 ):
     return cx_data_service.agent_performance(agent_id)
+
+
+# ─── Knowledge Base ──────────────────────────────────────────────
+
+@router.get("/kb")
+async def list_kb_articles(
+    category: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
+):
+    return cx_data_service.list_kb_articles(category=category, search=search)
+
+
+@router.get("/kb/categories")
+async def kb_categories(
+    _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
+):
+    return cx_data_service.kb_categories()
+
+
+@router.get("/kb/{article_id}")
+async def get_kb_article(
+    article_id: int,
+    _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
+):
+    article = cx_data_service.get_kb_article(article_id)
+    if not article:
+        from src.core.exceptions import NotFoundError
+        raise NotFoundError("Article", article_id)
+    return article
+
+
+# ─── Agent Presence ─────────────────────────────────────────────
+
+@router.get("/presence")
+async def list_presence(
+    _: User = Depends(RequirePermission(Resource.USER, Action.READ)),
+):
+    return cx_data_service.list_agent_presence()
+
+
+@router.get("/presence/summary")
+async def presence_summary(
+    _: User = Depends(RequirePermission(Resource.USER, Action.READ)),
+):
+    return cx_data_service.presence_summary()
+
+
+@router.get("/presence/{agent_id}")
+async def get_presence(
+    agent_id: int,
+    _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
+):
+    p = cx_data_service.get_agent_presence(agent_id)
+    if not p:
+        return {"agent_id": agent_id, "status": "offline", "updated_at": None}
+    return p
+
+
+@router.put("/presence/{agent_id}")
+async def set_presence(
+    agent_id: int,
+    body: PresenceBody,
+    db: AsyncSession = Depends(get_cx_db),
+    user: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
+):
+    if user.id != agent_id and user.role and user.role.name not in ("team_lead", "supervisor", "admin"):
+        from src.core.exceptions import ForbiddenError
+        raise ForbiddenError("You can only change your own presence status")
+
+    try:
+        result = cx_data_service.set_agent_presence(agent_id, body.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    await audit_service.log_action(
+        db, user_id=user.id, action="set_presence", resource="agent",
+        resource_id=agent_id, detail=f"status={body.status}"
+    )
+    await db.commit()
+    return result

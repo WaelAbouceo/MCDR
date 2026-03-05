@@ -57,6 +57,7 @@ def simulate_incoming_call(
     ani: str | None = None,
     queue: str | None = None,
     target_agent_id: int | None = None,
+    call_reason_id: int | None = None,
 ) -> dict:
     """Simulate a complete incoming call event from Cisco CTI.
 
@@ -135,11 +136,17 @@ def simulate_incoming_call(
         case_history = _get_recent_cases(caller["investor_id"])
         call_history = _get_recent_calls(caller["investor_id"])
 
+    # ── Step 5b: Resolve call reason taxonomy ──────────────────────
+    call_reason = None
+    if call_reason_id:
+        call_reason = _get_taxonomy(call_reason_id)
+
     # ── Step 6: Assemble screen-pop ──────────────────────────────
     screen_pop = {
         "call_id": call_id,
         "ani": ani,
         "queue": call_queue,
+        "call_reason": call_reason,
         "agent": {
             "id": agent["user_id"],
             "name": agent["full_name"],
@@ -167,6 +174,16 @@ def simulate_incoming_call(
     push_incoming_call(agent["user_id"], result)
 
     return result
+
+
+def _get_taxonomy(taxonomy_id: int) -> dict | None:
+    with _ro_conn(settings.mcdr_cx_db_path) as conn:
+        row = conn.execute(
+            "SELECT taxonomy_id, category, subcategory, description "
+            "FROM case_taxonomy WHERE taxonomy_id = ?",
+            (taxonomy_id,),
+        ).fetchone()
+        return dict(row) if row else None
 
 
 def _pick_random_caller() -> dict | None:
@@ -227,8 +244,10 @@ def _get_recent_calls(investor_id: int) -> list[dict]:
 def _pick_available_agent(queue: str) -> dict:
     with _ro_conn(settings.mcdr_cx_db_path) as conn:
         row = conn.execute(
-            "SELECT * FROM cx_users WHERE role='agent' AND is_active=1 ORDER BY RANDOM() LIMIT 1"
+            "SELECT * FROM cx_users WHERE role IN ('agent', 'senior_agent') AND is_active=1 ORDER BY RANDOM() LIMIT 1"
         ).fetchone()
+        if not row:
+            raise ValueError("No available agents in the system")
         return dict(row)
 
 
@@ -243,13 +262,13 @@ def _get_agent_by_id(agent_id: int) -> dict:
 def _sanitize_app_user(app_user: dict) -> dict:
     """Strip sensitive fields before sending to agent console."""
     return {
-        "investor_id": app_user["investor_id"],
-        "username": app_user["username"],
-        "mobile": app_user["mobile"],
-        "email": app_user["email"],
-        "status": app_user["status"],
-        "otp_verified": bool(app_user["otp_verified"]),
-        "last_login": app_user["last_login"],
+        "investor_id": app_user.get("investor_id"),
+        "username": app_user.get("username"),
+        "mobile": app_user.get("mobile"),
+        "email": app_user.get("email"),
+        "status": app_user.get("status"),
+        "otp_verified": bool(app_user.get("otp_verified", False)),
+        "last_login": app_user.get("last_login"),
     }
 
 

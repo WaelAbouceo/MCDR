@@ -1,6 +1,6 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +9,8 @@ from src.core.permissions import Action, Resource
 from src.database import get_cx_db
 from src.middleware.auth import RequirePermission, get_current_user
 from src.models.user import User
-from src.services import audit_service, cx_data_service
+from src.services import audit_service
+from src.services.async_cx import cx
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
@@ -26,12 +27,24 @@ class CaseCreateBody(BaseModel):
     taxonomy_id: int | None = Field(default=None, ge=1)
 
 
+ResolutionCode = Literal[
+    "fixed", "duplicate", "cannot_reproduce", "wont_fix",
+    "referred_third_party", "customer_withdrew", "information_provided",
+    "account_updated",
+]
+
+
 class CaseUpdateBody(BaseModel):
     status: Status | None = None
     priority: Priority | None = None
     subject: str | None = Field(default=None, min_length=3, max_length=300)
     description: str | None = Field(default=None, max_length=5000)
     taxonomy_id: int | None = Field(default=None, ge=1)
+    resolution_code: ResolutionCode | None = None
+
+
+class CaseReassignBody(BaseModel):
+    agent_id: int = Field(ge=1)
 
 
 class CaseNoteBody(BaseModel):
@@ -45,7 +58,7 @@ async def create_case(
     db: AsyncSession = Depends(get_cx_db),
     user: User = Depends(RequirePermission(Resource.CASE, Action.CREATE)),
 ):
-    case = cx_data_service.create_case(
+    case = await cx.create_case(
         agent_id=user.id,
         investor_id=body.investor_id,
         call_id=body.call_id,
@@ -72,7 +85,7 @@ async def list_cases(
     offset: int = Query(default=0, ge=0),
     _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
 ):
-    return cx_data_service.search_cases(
+    return await cx.search_cases(
         status=status, priority=priority, limit=limit, offset=offset,
     )
 
@@ -80,11 +93,13 @@ async def list_cases(
 @router.get("/{case_id}")
 async def get_case(
     case_id: int,
-    _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
+    user: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
 ):
-    case = cx_data_service.get_case(case_id)
+    case = await cx.get_case(case_id)
     if not case:
         raise NotFoundError("Case", case_id)
+    if user.role and user.role.name in ("agent", "senior_agent") and case.get("agent_id") != user.id:
+        raise ForbiddenError("Agents can only view their own cases")
     return case
 
 
@@ -95,19 +110,68 @@ async def update_case(
     db: AsyncSession = Depends(get_cx_db),
     user: User = Depends(RequirePermission(Resource.CASE, Action.UPDATE)),
 ):
-    existing = cx_data_service.get_case(case_id)
+    existing = await cx.get_case(case_id)
     if not existing:
         raise NotFoundError("Case", case_id)
 
-    if user.role and user.role.name == "agent" and existing.get("agent_id") != user.id:
+    if user.role and user.role.name in ("agent", "senior_agent") and existing.get("agent_id") != user.id:
         raise ForbiddenError("Agents can only modify their own cases")
 
+    if user.role and user.role.name == "qa_analyst":
+        raise ForbiddenError("QA analysts cannot modify case fields — use notes instead")
+
     changes = body.model_dump(exclude_unset=True)
-    case = cx_data_service.update_case(case_id, agent_id=user.id, **changes)
+    try:
+        case = await cx.update_case(case_id, agent_id=user.id, **changes)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
     await audit_service.log_action(
         db, user_id=user.id, action="update", resource="case",
         resource_id=case_id,
         detail=f"changes={changes}"
+    )
+    await db.commit()
+    return case
+
+
+@router.get("/{case_id}/transitions")
+async def get_valid_transitions(
+    case_id: int,
+    _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
+):
+    case = await cx.get_case(case_id)
+    if not case:
+        raise NotFoundError("Case", case_id)
+    return {
+        "current_status": case["status"],
+        "allowed": await cx.valid_next_statuses(case["status"]),
+    }
+
+
+@router.post("/{case_id}/reassign")
+async def reassign_case(
+    case_id: int,
+    body: CaseReassignBody,
+    db: AsyncSession = Depends(get_cx_db),
+    user: User = Depends(RequirePermission(Resource.CASE, Action.UPDATE)),
+):
+    existing = await cx.get_case(case_id)
+    if not existing:
+        raise NotFoundError("Case", case_id)
+
+    if user.role and user.role.name == "qa_analyst":
+        raise ForbiddenError("QA analysts cannot reassign cases")
+
+    if user.role and user.role.name == "agent":
+        raise ForbiddenError("T1 agents cannot reassign cases")
+
+    case = await cx.reassign_case(
+        case_id, new_agent_id=body.agent_id, changed_by=user.id,
+    )
+    await audit_service.log_action(
+        db, user_id=user.id, action="reassign", resource="case",
+        resource_id=case_id,
+        detail=f"new_agent_id={body.agent_id}"
     )
     await db.commit()
     return case
@@ -120,14 +184,14 @@ async def add_note(
     db: AsyncSession = Depends(get_cx_db),
     user: User = Depends(RequirePermission(Resource.CASE, Action.UPDATE)),
 ):
-    existing = cx_data_service.get_case(case_id)
+    existing = await cx.get_case(case_id)
     if not existing:
         raise NotFoundError("Case", case_id)
 
-    if user.role and user.role.name == "agent" and existing.get("agent_id") != user.id:
+    if user.role and user.role.name in ("agent", "senior_agent") and existing.get("agent_id") != user.id:
         raise ForbiddenError("Agents can only add notes to their own cases")
 
-    note = cx_data_service.add_case_note(
+    note = await cx.add_case_note(
         case_id,
         author_id=user.id,
         content=body.content,

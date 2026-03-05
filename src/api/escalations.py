@@ -31,7 +31,7 @@ async def escalate_case(
         from src.core.exceptions import ConflictError
         raise ConflictError("Case is already escalated")
 
-    if user.role and user.role.name == "agent" and existing.get("agent_id") != user.id:
+    if user.role and user.role.name in ("agent", "senior_agent") and existing.get("agent_id") != user.id:
         raise ForbiddenError("Agents can only escalate their own cases")
 
     result = cx_data_service.create_escalation(

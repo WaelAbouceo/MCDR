@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { simulate } from '../lib/api';
 import { StatusBadge } from './StatusBadge';
+import VerificationWizard from './VerificationWizard';
 import {
   PhoneCall,
   PhoneOff,
@@ -15,6 +16,7 @@ import {
   FolderPlus,
   FolderOpen,
   Timer,
+  Shield,
 } from 'lucide-react';
 
 export default function IncomingCall({ callData, onClose }) {
@@ -23,6 +25,8 @@ export default function IncomingCall({ callData, onClose }) {
   const [view, setView] = useState('expanded');       // expanded | minimized
   const [showHistory, setShowHistory] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [verified, setVerified] = useState(false);
+  const [showVerification, setShowVerification] = useState(false);
 
   const sp = callData?.screen_pop;
 
@@ -238,7 +242,7 @@ export default function IncomingCall({ callData, onClose }) {
                 <div>
                   <p className="text-slate-400 text-xs">Portfolio Value</p>
                   <p className="font-bold text-green-600">
-                    {port.total_value?.toLocaleString('en-US', { style: 'currency', currency: 'SAR' })}
+                    {port.total_value?.toLocaleString('en-US', { style: 'currency', currency: 'EGP' })}
                   </p>
                 </div>
               </div>
@@ -295,6 +299,35 @@ export default function IncomingCall({ callData, onClose }) {
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Verification */}
+          {phase === 'connected' && inv && (
+            <div className="px-6 py-3 border-b border-slate-100">
+              {!showVerification ? (
+                <button
+                  onClick={() => setShowVerification(true)}
+                  className={`w-full text-sm font-medium flex items-center justify-center gap-2 py-2 rounded-lg transition-colors ${
+                    verified
+                      ? 'bg-green-100 text-green-700'
+                      : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                  }`}
+                >
+                  <Shield size={14} />
+                  {verified ? 'Identity Verified' : 'Verify Caller Identity'}
+                </button>
+              ) : (
+                <VerificationWizard
+                  investorId={callData.ani_resolution?.investor_id}
+                  callId={sp.call_id}
+                  compact
+                  onComplete={(result) => {
+                    if (result.status === 'passed') setVerified(true);
+                    setShowVerification(false);
+                  }}
+                />
               )}
             </div>
           )}

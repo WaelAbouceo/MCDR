@@ -7,6 +7,7 @@ from sqlalchemy.orm import selectinload
 from src.core.exceptions import ForbiddenError
 from src.core.permissions import Action, Resource
 from src.core.security import decode_access_token
+from src.core.token_store import is_token_revoked
 from src.database import get_cx_db
 from src.models.user import User
 from src.services.rbac_service import has_permission
@@ -22,6 +23,11 @@ async def get_current_user(
     payload = decode_access_token(credentials.credentials)
     if payload is None:
         raise ForbiddenError("Invalid or expired token")
+
+    jti = payload.get("jti")
+    if jti and await is_token_revoked(jti):
+        raise ForbiddenError("Token has been revoked")
+
     user_id: int | None = payload.get("sub")
     if user_id is None:
         raise ForbiddenError("Invalid token payload")

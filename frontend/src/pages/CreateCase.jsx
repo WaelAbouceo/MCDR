@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { cases, registry } from '../lib/api';
+import { cases, cx, registry } from '../lib/api';
 import { FolderPlus, PhoneCall, User } from 'lucide-react';
 
 export default function CreateCase() {
@@ -15,12 +15,22 @@ export default function CreateCase() {
     priority: 'medium',
     investor_id: prefillInvestorId,
     call_id: prefillCallId,
+    taxonomy_id: '',
   });
   const [investorInfo, setInvestorInfo] = useState(null);
+  const [taxonomy, setTaxonomy] = useState([]);
+  const [selectedCategory, setSelectedCategory] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const categories = useMemo(() => [...new Set(taxonomy.map(t => t.category))], [taxonomy]);
+  const subcategories = useMemo(
+    () => taxonomy.filter(t => t.category === selectedCategory),
+    [taxonomy, selectedCategory],
+  );
+
   useEffect(() => {
+    cx.taxonomy().then(setTaxonomy).catch(() => {});
     if (prefillInvestorId) {
       registry.investorProfile(prefillInvestorId)
         .then(setInvestorInfo)
@@ -38,6 +48,8 @@ export default function CreateCase() {
       else body.investor_id = parseInt(body.investor_id);
       if (!body.call_id) delete body.call_id;
       else body.call_id = parseInt(body.call_id);
+      if (!body.taxonomy_id) delete body.taxonomy_id;
+      else body.taxonomy_id = parseInt(body.taxonomy_id);
       const created = await cases.create(body);
       navigate(`/cases/${created.case_id || created.id}`);
     } catch (err) {
@@ -96,6 +108,41 @@ export default function CreateCase() {
             className="input h-32 resize-none"
             placeholder="Detailed description..."
           />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="label">Call Reason — Category *</label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => {
+                setSelectedCategory(e.target.value);
+                setForm({ ...form, taxonomy_id: '' });
+              }}
+              className="input"
+              required
+            >
+              <option value="">Select category...</option>
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="label">Subcategory *</label>
+            <select
+              value={form.taxonomy_id}
+              onChange={(e) => setForm({ ...form, taxonomy_id: e.target.value })}
+              className="input"
+              required
+              disabled={!selectedCategory}
+            >
+              <option value="">Select subcategory...</option>
+              {subcategories.map(t => (
+                <option key={t.taxonomy_id} value={t.taxonomy_id}>{t.subcategory}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

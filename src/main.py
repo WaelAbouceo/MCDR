@@ -1,47 +1,104 @@
 import logging
+import sys
 import uuid
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 
-from src.api.router import api_router
+from src.api.router import api_router, legacy_router
 from src.config import get_settings
-from src.database import init_db, CxSessionLocal
+from src.core.rate_limit import get_client_ip, set_redis_client as set_rate_limit_redis
+from src.core.token_store import set_redis_client as set_token_redis
+from src.database import init_db, cx_engine, customer_engine, CxSessionLocal
 from src.middleware.audit import AuditMiddleware
 
 settings = get_settings()
 
-logging.basicConfig(
-    level=settings.log_level,
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+
+# ─── Structured Logging ──────────────────────────────────────
+
+def _configure_logging():
+    root = logging.getLogger()
+    root.setLevel(settings.log_level)
+    root.handlers.clear()
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(settings.log_level)
+
+    if settings.is_production:
+        try:
+            from pythonjsonlogger.json import JsonFormatter
+            formatter = JsonFormatter(
+                fmt="%(asctime)s %(levelname)s %(name)s %(message)s",
+                rename_fields={"asctime": "timestamp", "levelname": "level", "name": "logger"},
+            )
+        except ImportError:
+            formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    else:
+        formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+
+    handler.setFormatter(formatter)
+    root.addHandler(handler)
+
+
+_configure_logging()
 logger = logging.getLogger("mcdr")
 
+
+# ─── Rate Limiter (slowapi) ──────────────────────────────────
+
+limiter = Limiter(key_func=get_client_ip, default_limits=["200/minute"])
+
+
+# ─── Lifespan ────────────────────────────────────────────────
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("MCDR CX Platform starting (env=%s)", settings.environment)
+
+    try:
+        from src.core.redis_client import get_redis
+        redis = await get_redis()
+        set_rate_limit_redis(redis)
+        set_token_redis(redis)
+        logger.info("Redis connected — distributed rate limiting and token store active")
+    except Exception as e:
+        logger.warning("Redis unavailable — using in-memory fallback: %s", e)
+
     await init_db()
     logger.info("Database tables ready")
     yield
-    logger.info("MCDR CX Platform shutting down")
+    logger.info("MCDR CX Platform shutting down — disposing connections")
+    await cx_engine.dispose()
+    await customer_engine.dispose()
+    try:
+        from src.core.redis_client import close_redis
+        await close_redis()
+    except Exception:
+        pass
+    logger.info("Shutdown complete")
 
 
 app = FastAPI(
     title="MCDR CX Platform",
     description="Mobile Customer Dispute Resolution — CX Operation API",
-    version="1.0.0",
+    version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs" if settings.environment != "production" else None,
     redoc_url=None,
 )
+app.state.limiter = limiter
 
 
-# ─── Security Headers ────────────────────────────────────────────
+# ─── Security Headers ────────────────────────────────────────
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -73,7 +130,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# ─── Request ID ──────────────────────────────────────────────────
+# ─── Request ID ──────────────────────────────────────────────
 
 class RequestIdMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -84,7 +141,7 @@ class RequestIdMiddleware(BaseHTTPMiddleware):
         return response
 
 
-# ─── Middleware stack (order matters: outermost first) ───────────
+# ─── Middleware stack (order matters: outermost first) ───────
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestIdMiddleware)
@@ -92,14 +149,22 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 app.add_middleware(AuditMiddleware)
 app.include_router(api_router)
+app.include_router(legacy_router)
 
 
-# ─── Global Exception Handlers ──────────────────────────────────
+# ─── Global Exception Handlers ──────────────────────────────
+
+def _error_response(status_code: int, code: str, message: str, request_id: str, details=None):
+    content = {"error": {"code": code, "message": message, "request_id": request_id}}
+    if details is not None:
+        content["error"]["details"] = details
+    return JSONResponse(status_code=status_code, content=content)
+
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
@@ -109,40 +174,38 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
         request_id, type(exc).__name__, exc,
         exc_info=True,
     )
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": {
-                "code": "INTERNAL_ERROR",
-                "message": "An unexpected error occurred. Please try again.",
-                "request_id": request_id,
-            }
-        },
-    )
+    return _error_response(500, "INTERNAL_ERROR",
+                           "An unexpected error occurred. Please try again.", request_id)
 
 
-@app.exception_handler(422)
-async def validation_exception_handler(request: Request, exc):
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     request_id = getattr(request.state, "request_id", "unknown")
-    return JSONResponse(
-        status_code=422,
-        content={
-            "error": {
-                "code": "VALIDATION_ERROR",
-                "message": "Request validation failed",
-                "details": exc.errors() if hasattr(exc, "errors") else str(exc),
-                "request_id": request_id,
-            }
-        },
-    )
+    return _error_response(exc.status_code, f"HTTP_{exc.status_code}",
+                           str(exc.detail), request_id)
 
 
-# ─── Health Checks ───────────────────────────────────────────────
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    request_id = getattr(request.state, "request_id", "unknown")
+    return _error_response(422, "VALIDATION_ERROR",
+                           "Request validation failed", request_id,
+                           details=exc.errors())
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    request_id = getattr(request.state, "request_id", "unknown")
+    return _error_response(429, "RATE_LIMIT_EXCEEDED",
+                           "Too many requests. Please slow down.", request_id)
+
+
+# ─── Health Checks ───────────────────────────────────────────
 
 @app.get("/health")
 async def health():
     """Liveness check — process is running."""
-    return {"status": "ok", "environment": settings.environment}
+    return {"status": "ok", "environment": settings.environment, "version": "2.0.0"}
 
 
 @app.get("/health/ready")
@@ -159,18 +222,28 @@ async def readiness():
             result.scalar()
             checks["cx_database"] = "ok"
     except Exception as e:
-        checks["cx_database"] = f"error: {e}"
+        logger.error("CX database health check failed: %s", e)
+        checks["cx_database"] = "unavailable"
         healthy = False
 
-    import sqlite3
     try:
-        conn = sqlite3.connect(settings.mcdr_core_db_path)
+        import sqlite3
+        conn = sqlite3.connect(settings.mcdr_core_db_path, timeout=5)
         conn.execute("SELECT 1")
         conn.close()
         checks["core_database"] = "ok"
     except Exception as e:
-        checks["core_database"] = f"error: {e}"
+        logger.error("Core database health check failed: %s", e)
+        checks["core_database"] = "unavailable"
         healthy = False
+
+    try:
+        from src.core.redis_client import get_redis
+        redis = await get_redis()
+        await redis.ping()
+        checks["redis"] = "ok"
+    except Exception:
+        checks["redis"] = "unavailable (non-critical)"
 
     status_code = 200 if healthy else 503
     return JSONResponse(

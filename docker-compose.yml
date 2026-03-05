@@ -1,10 +1,20 @@
 version: "3.9"
 
 services:
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - frontend_dist:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+
   api:
     build: .
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     env_file: .env
     depends_on:
       cx-db:
@@ -17,39 +27,33 @@ services:
   cx-db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: mcdr
-      POSTGRES_PASSWORD: mcdr_secret
-      POSTGRES_DB: mcdr
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${CX_DB_USER:-mcdr}
+      POSTGRES_PASSWORD: ${CX_DB_PASSWORD:?Set CX_DB_PASSWORD in .env}
+      POSTGRES_DB: ${CX_DB_NAME:-mcdr}
     volumes:
       - cx_data:/var/lib/postgresql/data
       - ./db/init_cx.sql:/docker-entrypoint-initdb.d/01_init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mcdr"]
+      test: ["CMD-SHELL", "pg_isready -U ${CX_DB_USER:-mcdr}"]
       interval: 5s
       retries: 5
 
   customer-db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: mcdr_readonly
-      POSTGRES_PASSWORD: readonly_secret
-      POSTGRES_DB: mcdr_customers
-    ports:
-      - "5433:5432"
+      POSTGRES_USER: ${CUSTOMER_DB_USER:-mcdr_readonly}
+      POSTGRES_PASSWORD: ${CUSTOMER_DB_PASSWORD:?Set CUSTOMER_DB_PASSWORD in .env}
+      POSTGRES_DB: ${CUSTOMER_DB_NAME:-mcdr_customers}
     volumes:
       - customer_data:/var/lib/postgresql/data
       - ./db/init_customer.sql:/docker-entrypoint-initdb.d/01_init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U mcdr_readonly"]
+      test: ["CMD-SHELL", "pg_isready -U ${CUSTOMER_DB_USER:-mcdr_readonly}"]
       interval: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -58,3 +62,4 @@ services:
 volumes:
   cx_data:
   customer_data:
+  frontend_dist:

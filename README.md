@@ -12,13 +12,14 @@ A production-grade Contact Center CX platform for regulated financial services. 
 4. [Tech Stack](#tech-stack)
 5. [Configuration](#configuration)
 6. [Database Architecture](#database-architecture)
-7. [API Reference](#api-reference)
-8. [Security & RBAC](#security--rbac)
-9. [Audit & Compliance](#audit--compliance)
-10. [Frontend Application](#frontend-application)
-11. [Role-Based User Guides](#role-based-user-guides)
-12. [Production Deployment](#production-deployment)
-13. [Development Guide](#development-guide)
+7. [Case Lifecycle](./docs/CASE_LIFECYCLE.md)
+8. [API Reference](#api-reference)
+9. [Security & RBAC](#security--rbac)
+10. [Audit & Compliance](#audit--compliance)
+11. [Frontend Application](#frontend-application)
+12. [Role-Based User Guides](#role-based-user-guides)
+13. [Production Deployment](#production-deployment)
+14. [Development Guide](#development-guide)
 
 ---
 
@@ -288,17 +289,17 @@ Base URL: `/api`
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/cases` | Agent/Supervisor/Admin | Create case (validated: subject 3-300 chars, priority enum) |
+| POST | `/cases` | Agent/Team Lead/Supervisor/Admin | Create case (validated: subject 3-300 chars, priority enum) |
 | GET | `/cases` | Case readers | List cases (paginated: limit 1-200) |
 | GET | `/cases/{id}` | Case readers | Get case detail |
-| PATCH | `/cases/{id}` | Agent (own) / Supervisor / Admin | Update case (ownership enforced) |
-| POST | `/cases/{id}/notes` | Agent (own) / Supervisor / Admin | Add note (1-5000 chars) |
+| PATCH | `/cases/{id}` | Agent (own) / Team Lead / Supervisor / Admin | Update case (ownership enforced for agents) |
+| POST | `/cases/{id}/notes` | Agent (own) / Team Lead / Supervisor / Admin | Add note (1-5000 chars) |
 
 ### Escalations
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/escalations` | Agent/Supervisor/Admin | Escalate case (reason 5-1000 chars, case must exist, not already escalated) |
+| POST | `/escalations` | Agent/Team Lead/Supervisor/Admin | Escalate case (reason 5-1000 chars, case must exist, not already escalated) |
 | GET | `/escalations/case/{id}` | Supervisor/Admin | List escalations for case |
 
 ### CX Data (Reports & Search)
@@ -371,25 +372,26 @@ Base URL: `/api`
 
 ### Role-Permission Matrix
 
-| Resource | Agent | Supervisor | QA Analyst | Admin |
-|----------|:-----:|:----------:|:----------:|:-----:|
-| **Case** | C R U | C R U | R | All |
-| **Call** | R | R | R | All |
-| **Customer** | R (masked) | R (masked) | R (masked) | R (all fields) |
-| **User** | — | R | — | All |
-| **SLA** | — | R | — | All |
-| **Escalation** | Escalate | Escalate, R | — | All |
-| **QA** | — | — | R, Evaluate | All |
-| **Audit** | — | — | — | All |
-| **Report** | — | R | R | All |
+| Resource | Agent (T1) | Senior Agent (T2) | Team Lead | Supervisor | QA Analyst | Admin |
+|----------|:----------:|:-----------------:|:---------:|:----------:|:----------:|:-----:|
+| **Case** | C R U | C R U | C R U | C R U | R U (notes only) | All |
+| **Call** | R | R | R | R | R | All |
+| **Customer** | R (masked) | R (masked) | R (masked) | R (masked) | R (masked) | R (all) |
+| **User** | — | — | R | R | — | All |
+| **SLA** | — | R | R | R | R | All |
+| **Escalation** | Escalate | Escalate, R | Escalate, R | Escalate, R | R | All |
+| **QA** | — | — | R | — | R, Evaluate | All |
+| **Audit** | — | — | — | — | — | All |
+| **Report** | R | R | R | R, Export | R | All |
 
 ### Customer Field Masking
 
 | Role | Visible Fields |
 |------|---------------|
 | Agent | id, name, phone_number, account_tier |
+| Team Lead | id, name, phone_number, account_number, account_tier |
 | Supervisor | id, name, phone_number, account_number, account_tier |
-| QA Analyst | id, name |
+| QA Analyst | id, name, phone_number, account_tier |
 | Admin | All fields |
 
 ### Authentication Flow
@@ -459,7 +461,7 @@ Every response includes:
 
 ### Ownership Enforcement
 
-Agents can only modify (update, add notes, escalate) **their own cases**. Supervisors and admins bypass this restriction.
+Agents and senior agents can only modify (update, add notes, escalate) **their own cases**. Team leads, supervisors, and admins bypass this restriction. QA analysts can add notes to any case but cannot modify case fields.
 
 ---
 
@@ -511,14 +513,15 @@ Supports filtering by: `user_id`, `resource`, `action`, `from_date`, `to_date`.
 | `/login` | Login | Public | Login with demo user shortcuts |
 | `/dashboard` | Dashboard | All | Role-adaptive dashboard |
 | `/cases` | Case List | All | Cases with search/filters |
-| `/cases/new` | Create Case | Agent, Supervisor, Admin | Case creation form (auto-fills from call context) |
+| `/cases/new` | Create Case | Agent, Team Lead, Supervisor, Admin | Case creation form (auto-fills from call context) |
 | `/cases/:id` | Case Detail | All | Full case view with notes, escalation, QA |
-| `/escalations` | Escalations | Supervisor, Admin | Escalated cases overview |
-| `/sla` | SLA Monitor | Supervisor, Admin | SLA breach analytics |
-| `/team` | Team | Supervisor, Admin | Team performance table |
+| `/escalations` | Escalations | Agent (T2), Team Lead, Supervisor, Admin | Escalated cases overview |
+| `/sla` | SLA Monitor | Agent (T2), Team Lead, Supervisor, Admin | SLA breach analytics |
+| `/team` | Team | Team Lead, Supervisor, Admin | Team performance table |
+| `/reports` | Reports | Team Lead, Supervisor, Admin | Operations KPI dashboard |
 | `/qa` | QA Evaluations | QA Analyst, Admin | Evaluation list |
 | `/leaderboard` | Leaderboard | QA Analyst, Admin | Agent quality rankings |
-| `/investor-search` | Investor Lookup | Agent, Supervisor, Admin | Search and view investor profiles |
+| `/investor-search` | Investor Lookup | Agent, Team Lead, Supervisor, Admin | Search and view investor profiles |
 | `/admin/users` | User Management | Admin | Create, edit, activate/deactivate users |
 | `/audit` | Audit Trail | Admin | Full audit log viewer with filters |
 | `/simulate` | Simulate Call | Supervisor, Admin | CTI call simulation |
@@ -549,11 +552,11 @@ Call arrives → Screen-pop with investor context
 
 ## Role-Based User Guides
 
-### Agent
+### Agent (T1)
 
-As an agent, you handle incoming customer calls and manage support cases.
+As a front-line agent, you handle incoming customer calls and manage support cases.
 
-**Your sidebar:** Dashboard → My Cases → New Case → Investor Lookup
+**Your sidebar:** Dashboard → My Cases → New Case → Outbound Queue → Investor Lookup
 
 **Key workflows:**
 1. **Receive calls**: Incoming calls appear as a screen-pop with full investor context
@@ -563,11 +566,38 @@ As an agent, you handle incoming customer calls and manage support cases.
 5. **Manage cases**: Add notes, change status, escalate with a reason
 6. **Search investors**: Look up investor profiles and create cases from search results
 
+### Senior Agent (T2)
+
+As a senior agent, you handle escalated and complex cases that require deeper expertise.
+
+**Your sidebar:** Dashboard → My Cases → New Case → Outbound Queue → Escalations → SLA Monitor → Investor Lookup
+
+**Key workflows:**
+1. **Escalation queue**: Pick up escalated cases from the queue
+2. **Complex investigations**: Deep-dive into trading disputes, settlement issues, regulatory concerns
+3. **SLA monitoring**: Watch for approaching breaches on your assigned cases
+4. **Reassign cases**: Transfer cases to other T2 agents or supervisors
+5. **Standard case work**: Create and manage cases like T1, with access to escalation context
+
+### Team Lead
+
+As a team lead, you manage a squad of ~10 agents, monitor their performance, and ensure SLA compliance.
+
+**Your sidebar:** Dashboard → All Cases → New Case → Outbound Queue → Escalations → SLA Monitor → Reports → Team → Investor Lookup
+
+**Key workflows:**
+1. **Case oversight**: View and update any case in your team's queue
+2. **Escalation triage**: Review escalated cases, reassign or pick up as needed
+3. **SLA monitoring**: Watch for approaching SLA breaches and intervene early
+4. **Team performance**: Track agent KPIs via Team and Reports pages
+5. **QA review**: Read QA evaluation results for your agents (read-only)
+6. **Reassign cases**: Redistribute workload when agents are overloaded
+
 ### Supervisor
 
-As a supervisor, you oversee operations, monitor SLA, and handle escalations.
+As a supervisor, you oversee operations across teams, monitor SLA, and handle escalations.
 
-**Your sidebar:** Dashboard → All Cases → Escalations → SLA Monitor → Team → Simulate Call → Investor Lookup
+**Your sidebar:** Dashboard → All Cases → Outbound Queue → Escalations → SLA Monitor → Reports → Team → Simulate Call → Investor Lookup
 
 **Key workflows:**
 1. **Monitor dashboard**: Track case volumes, SLA breaches, call statistics

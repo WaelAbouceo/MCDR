@@ -124,6 +124,6 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 )
                 await session.commit()
         except Exception as e:
-            logger.debug("Audit log write failed: %s", e)
+            logger.error("Audit log write failed: %s", e, exc_info=True)
 
         return response
