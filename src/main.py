@@ -219,6 +219,10 @@ if _frontend_dist.is_dir():
         app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
     _index = _frontend_dist / "index.html"
     if _index.is_file():
+        @app.get("/", include_in_schema=False)
+        async def serve_root():
+            return FileResponse(str(_index))
+
         @app.get("/{full_path:path}", include_in_schema=False)
         async def serve_spa(full_path: str):
             if full_path.startswith("api"):
