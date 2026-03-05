@@ -2,10 +2,13 @@ import logging
 import sys
 import uuid
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
@@ -157,51 +160,7 @@ app.include_router(api_router)
 app.include_router(legacy_router)
 
 
-# ─── Global Exception Handlers ──────────────────────────────
-
-def _error_response(status_code: int, code: str, message: str, request_id: str, details=None):
-    content = {"error": {"code": code, "message": message, "request_id": request_id}}
-    if details is not None:
-        content["error"]["details"] = details
-    return JSONResponse(status_code=status_code, content=content)
-
-
-@app.exception_handler(Exception)
-async def unhandled_exception_handler(request: Request, exc: Exception):
-    request_id = getattr(request.state, "request_id", "unknown")
-    logger.error(
-        "Unhandled error [request_id=%s] %s: %s",
-        request_id, type(exc).__name__, exc,
-        exc_info=True,
-    )
-    return _error_response(500, "INTERNAL_ERROR",
-                           "An unexpected error occurred. Please try again.", request_id)
-
-
-@app.exception_handler(StarletteHTTPException)
-async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-    request_id = getattr(request.state, "request_id", "unknown")
-    return _error_response(exc.status_code, f"HTTP_{exc.status_code}",
-                           str(exc.detail), request_id)
-
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    request_id = getattr(request.state, "request_id", "unknown")
-    return _error_response(422, "VALIDATION_ERROR",
-                           "Request validation failed", request_id,
-                           details=exc.errors())
-
-
-@app.exception_handler(RateLimitExceeded)
-async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    request_id = getattr(request.state, "request_id", "unknown")
-    return _error_response(429, "RATE_LIMIT_EXCEEDED",
-                           "Too many requests. Please slow down.", request_id)
-
-
-# ─── Health Checks ───────────────────────────────────────────
-
+# ─── Health Checks (registered before SPA catch-all so /health and /health/ready work) ─
 @app.get("/health")
 async def health():
     """Liveness check — process is running."""
@@ -250,3 +209,62 @@ async def readiness():
         status_code=status_code,
         content={"status": "ok" if healthy else "degraded", "checks": checks},
     )
+
+
+# ─── Serve frontend SPA (when running in Docker / single container) ─
+_frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if _frontend_dist.is_dir():
+    _assets = _frontend_dist / "assets"
+    if _assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
+    _index = _frontend_dist / "index.html"
+    if _index.is_file():
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str):
+            if full_path.startswith("api"):
+                return JSONResponse(status_code=404, content={"detail": "Not found"})
+            return FileResponse(str(_index))
+
+# ─── Global Exception Handlers ──────────────────────────────
+
+def _error_response(status_code: int, code: str, message: str, request_id: str, details=None):
+    content = {"error": {"code": code, "message": message, "request_id": request_id}}
+    if details is not None:
+        content["error"]["details"] = details
+    return JSONResponse(status_code=status_code, content=content)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.state, "request_id", "unknown")
+    logger.error(
+        "Unhandled error [request_id=%s] %s: %s",
+        request_id, type(exc).__name__, exc,
+        exc_info=True,
+    )
+    return _error_response(500, "INTERNAL_ERROR",
+                           "An unexpected error occurred. Please try again.", request_id)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    request_id = getattr(request.state, "request_id", "unknown")
+    return _error_response(exc.status_code, f"HTTP_{exc.status_code}",
+                           str(exc.detail), request_id)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    request_id = getattr(request.state, "request_id", "unknown")
+    return _error_response(422, "VALIDATION_ERROR",
+                           "Request validation failed", request_id,
+                           details=exc.errors())
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    request_id = getattr(request.state, "request_id", "unknown")
+    return _error_response(429, "RATE_LIMIT_EXCEEDED",
+                           "Too many requests. Please slow down.", request_id)
+
+
