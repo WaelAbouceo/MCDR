@@ -178,6 +178,7 @@ The application is available at:
 | Role | Username | Password | Name |
 |------|----------|----------|------|
 | Agent | `agent1` | `agent123` | Daniel Thompson |
+| Team Lead | `tl1` | `lead123` | — |
 | Supervisor | `supervisor1` | `super123` | Judy Martinez |
 | QA Analyst | `qa1` | `qa1234` | Jonathon Reed |
 | Admin | `admin1` | `admin123` | Ashley Roberts |

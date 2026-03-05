@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 const DEMO_USERS = [
   { username: 'agent11', password: 'agent123', label: 'T1 Agent — وكيل', role: 'agent' },
   { username: 'agent1', password: 'agent123', label: 'T2 Senior — وكيل أول', role: 'agent_t2' },
+  { username: 'tl1', password: 'lead123', label: 'Team Lead — قائد فريق', role: 'team_lead' },
   { username: 'supervisor1', password: 'super123', label: 'Supervisor — مشرف', role: 'supervisor' },
   { username: 'qa1', password: 'qa1234', label: 'QA — جودة', role: 'qa_analyst' },
   { username: 'admin1', password: 'admin123', label: 'Admin — مدير', role: 'admin' },
@@ -13,6 +14,7 @@ const DEMO_USERS = [
 const ROLE_COLORS = {
   agent: 'border-blue-200 bg-blue-50 hover:border-blue-400',
   agent_t2: 'border-amber-200 bg-amber-50 hover:border-amber-400',
+  team_lead: 'border-emerald-200 bg-emerald-50 hover:border-emerald-400',
   supervisor: 'border-purple-200 bg-purple-50 hover:border-purple-400',
   qa_analyst: 'border-teal-200 bg-teal-50 hover:border-teal-400',
   admin: 'border-red-200 bg-red-50 hover:border-red-400',
