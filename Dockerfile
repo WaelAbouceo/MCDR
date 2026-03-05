@@ -4,7 +4,7 @@ WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci --ignore-scripts 2>/dev/null || npm install
 COPY frontend/ .
-RUN npm run build
+RUN npm run build && test -f /build/dist/index.html || (echo "Frontend build failed: no index.html" && exit 1)
 
 # ── Stage 2: Python API ─────────────────────────────────────
 FROM python:3.12-slim AS runtime
@@ -20,6 +20,7 @@ COPY src/ src/
 COPY db/ db/
 
 COPY --from=frontend-build /build/dist/ frontend/dist/
+RUN test -f /app/frontend/dist/index.html || (echo "Frontend not in image" && exit 1)
 
 RUN chown -R mcdr:mcdr /app
 
