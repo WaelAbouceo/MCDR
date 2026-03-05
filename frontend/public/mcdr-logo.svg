@@ -1,16 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
-  <!-- Background rounded square -->
   <rect width="64" height="64" rx="14" fill="#1e1b4b"/>
-  <!-- Pyramid silhouette -->
-  <path d="M32 14L48 44H16L32 14Z" fill="#c7a94e" opacity="0.25"/>
-  <!-- Headset arc -->
-  <path d="M20 34c0-6.627 5.373-12 12-12s12 5.373 12 12" stroke="#c7a94e" stroke-width="3.5" stroke-linecap="round" fill="none"/>
-  <!-- Left earpiece -->
-  <rect x="15" y="32" width="7" height="12" rx="3.5" fill="#c7a94e"/>
-  <!-- Right earpiece -->
-  <rect x="42" y="32" width="7" height="12" rx="3.5" fill="#c7a94e"/>
-  <!-- Microphone arm -->
-  <path d="M42 40c3 0 5 2 5 4v2c0 1.5-1.5 3-3 3h-6" stroke="#c7a94e" stroke-width="2.5" stroke-linecap="round" fill="none"/>
-  <!-- MCDR text -->
-  <text x="32" y="57" text-anchor="middle" font-family="system-ui, Arial, sans-serif" font-size="7.5" font-weight="700" fill="white" letter-spacing="2">MCDR</text>
+  <path d="M16 32c0-8.837 7.163-16 16-16s16 7.163 16 16" stroke="#c7a94e" stroke-width="3.5" stroke-linecap="round" fill="none"/>
+  <rect x="11" y="30" width="7" height="13" rx="3.5" fill="#c7a94e"/>
+  <rect x="46" y="30" width="7" height="13" rx="3.5" fill="#c7a94e"/>
+  <path d="M14.5 39c-3 0-4.5 1.5-4.5 3.5v1c0 1.5 1.5 2.5 3 2.5h5" stroke="#c7a94e" stroke-width="2.2" stroke-linecap="round" fill="none"/>
+  <circle cx="10" cy="46" r="2.5" fill="#c7a94e"/>
+  <text x="32" y="57" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="9" font-weight="700" fill="white" letter-spacing="2.5">MCDR</text>
 </svg>

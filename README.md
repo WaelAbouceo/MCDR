@@ -1,6 +1,13 @@
-# MCDR — Mobile Customer Dispute Resolution Platform
+<p align="center">
+  <img src="docs/mcdr-logo.png" alt="MCDR Logo" width="180" />
+</p>
 
-A production-grade Contact Center CX platform for regulated financial services. Handles inbound calls, case management, SLA tracking, escalation workflows, QA scoring, audit compliance, and operational reporting — built with data-zone segmentation and full regulatory traceability.
+<h1 align="center">MCDR — CX Platform</h1>
+
+<p align="center">
+  <strong>Contact Center Management System for Financial Institutions</strong><br/>
+  A production-grade CX platform for regulated financial services. Handles inbound calls, case management, SLA tracking, escalation workflows, QA scoring, audit compliance, and operational reporting — built with data-zone segmentation and full regulatory traceability.
+</p>
 
 ---
 
