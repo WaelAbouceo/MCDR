@@ -2,7 +2,7 @@
   <img src="docs/mcdr-logo.png" alt="MCDR Logo" width="180" />
 </p>
 
-<h1 align="center">MCDR — CX Platform</h1>
+<h1 align="center">MCDR — Misr for Central Clearing, Depository and Registry</h1>
 
 <p align="center">
   <strong>Contact Center Management System for Financial Institutions</strong><br/>

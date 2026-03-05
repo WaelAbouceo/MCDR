@@ -89,7 +89,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="MCDR CX Platform",
-    description="Mobile Customer Dispute Resolution — CX Operation API",
+    description="Misr for Central Clearing, Depository and Registry — CX Operation API",
     version="2.0.0",
     lifespan=lifespan,
     docs_url="/docs" if settings.environment != "production" else None,
