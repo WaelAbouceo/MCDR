@@ -14,19 +14,20 @@
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Quick Start](#quick-start)
-3. [Project Structure](#project-structure)
-4. [Tech Stack](#tech-stack)
-5. [Configuration](#configuration)
-6. [Database Architecture](#database-architecture)
-7. [Case Lifecycle](./docs/CASE_LIFECYCLE.md)
-8. [API Reference](#api-reference)
-9. [Security & RBAC](#security--rbac)
-10. [Audit & Compliance](#audit--compliance)
-11. [Frontend Application](#frontend-application)
-12. [Role-Based User Guides](#role-based-user-guides)
-13. [Production Deployment](#production-deployment)
-14. [Development Guide](#development-guide)
+2. [CX Platform Domains](./docs/CX_PLATFORM_DOMAINS.md) — 8 domains: Telephony, Data Lookup, Cases, SLA, Audit, QA, Analytics, Agent Desktop
+3. [Quick Start](#quick-start)
+4. [Project Structure](#project-structure)
+5. [Tech Stack](#tech-stack)
+6. [Configuration](#configuration)
+7. [Database Architecture](#database-architecture)
+8. [Case Lifecycle](./docs/CASE_LIFECYCLE.md)
+9. [API Reference](#api-reference)
+10. [Security & RBAC](#security--rbac)
+11. [Audit & Compliance](#audit--compliance)
+12. [Frontend Application](#frontend-application)
+13. [Role-Based User Guides](#role-based-user-guides)
+14. [Production Deployment](#production-deployment)
+15. [Development Guide](#development-guide)
 
 ---
 
