@@ -32,18 +32,99 @@
 
 ## Architecture Overview
 
+<p align="center">
+  <img src="docs/mcdr-architecture-diagram.png" alt="MCDR Architecture — IVR to Agent Console" width="900" />
+</p>
+
+### Call Flow: Investor → IVR → Mobile App Support → Agent
+
 ```
-┌─────────────────┐     ┌──────────────────────────────────────────────┐     ┌──────────────────┐
-│    Telephony     │────▶│         CX Operation Zone (FastAPI)          │────▶│  Customer Data   │
-│  Cisco IVR/ACD   │ CTI │  Cases · SLA · Escalation · QA · Audit      │ R/O │  Zone (isolated) │
-│   CTI Adapter    │     │  Users · RBAC · Rate Limiting                │     │  Investors       │
-└─────────────────┘     └──────────────────────────────────────────────┘     │  Holdings        │
-                              │                    ▲                          │  Securities      │
-                              ▼                    │                          │  App Users       │
-                        ┌──────────┐    ┌──────────────────┐                  └──────────────────┘
-                        │ CX DB    │    │   React Frontend   │
-                        │ (R/W)    │    │   (SPA + Vite)     │
-                        └──────────┘    └──────────────────┘
+Investor dials MCDR hotline (+20-2-2123-4567)
+        │
+        ▼
+┌─────────────────────────────────────────────────────┐
+│  CISCO IVR — Interactive Voice Response              │
+│                                                      │
+│  ├─ 1  Trading & Orders                             │
+│  │     ├─ 1>1  Order Status                         │
+│  │     ├─ 1>2  Trading Disputes                     │
+│  │     └─ 1>3  Corporate Actions / Dividends        │
+│  ├─ 2  Account Services                             │
+│  │     ├─ 2>1  KYC / Profile Update                 │
+│  │     └─ 2>2  Account Closure                      │
+│  ├─ 3  Mobile App Support  ◄── highlighted path     │
+│  │     ├─ 3>1  Login / Password Issues              │
+│  │     ├─ 3>2  App Crashes / Technical              │
+│  │     └─ 3>3  OTP Problems                         │
+│  ├─ 4  Billing & Fees                               │
+│  └─ 9  Speak to Agent (Priority Queue)              │
+└───────────────────────┬─────────────────────────────┘
+                        │ IVR path: "3>1"
+                        ▼
+┌──────────────────────────────────────────────────────┐
+│  CISCO ACD — Automatic Call Distribution             │
+│                                                      │
+│  Queues: general │ billing │ technical │ priority │   │
+│                    retention                         │
+│                                                      │
+│  IVR "3>*" routes → "technical" queue                │
+│  Picks available agent (round-robin / skills-based)  │
+└───────────────────────┬──────────────────────────────┘
+                        │ call_offered event
+                        ▼
+┌──────────────────────────────────────────────────────┐
+│  CTI ADAPTER → MCDR CX Platform                     │
+│                                                      │
+│  Event payload:                                      │
+│    ANI: +201012345678  (caller's mobile)             │
+│    DNIS: +20221234567  (hotline number)              │
+│    IVR Path: "3>1"                                   │
+│    Queue: "technical"                                │
+│    Call ID: 847293                                   │
+└───────────────────────┬──────────────────────────────┘
+                        │
+                        ▼
+┌──────────────────────────────────────────────────────┐
+│  MCDR ANI RESOLUTION + SCREEN-POP                    │
+│                                                      │
+│  1. ANI lookup → Mobile App DB (mcdr_mobile.db)      │
+│     +201012345678 → investor_id: 12345               │
+│                                                      │
+│  2. Investor profile → Core Registry (mcdr_core.db)  │
+│     Name, National ID, Account Status, Type          │
+│                                                      │
+│  3. Portfolio → Holdings + Securities                │
+│     12 positions, EGP 1.2M total value               │
+│                                                      │
+│  4. Case history → CX DB (mcdr_cx.db)               │
+│     2 open cases, 5 recent calls                     │
+│                                                      │
+│  5. Risk flags computed:                             │
+│     [FREQUENT_CALLER, OTP_NOT_VERIFIED]              │
+│                                                      │
+│  → Screen-pop pushed to agent console                │
+└───────────────────────┬──────────────────────────────┘
+                        │
+                        ▼
+┌──────────────────────────────────────────────────────┐
+│  AGENT CONSOLE (React SPA)                           │
+│                                                      │
+│  ┌─ Screen-Pop ─────────────────────────────────┐    │
+│  │ Investor: محمد أحمد (INV-012345)             │    │
+│  │ Mobile: +201012345678  Status: Active        │    │
+│  │ Portfolio: 12 positions, EGP 1.2M            │    │
+│  │ Open Cases: 2  Risk: ⚠ FREQUENT_CALLER      │    │
+│  │ Call Reason: Mobile App > Login Issues (3>1) │    │
+│  └──────────────────────────────────────────────┘    │
+│                                                      │
+│  Agent workflow:                                     │
+│    1. Identity Verification (4-step verbal)          │
+│    2. Create / update case                           │
+│    3. Search Knowledge Base                          │
+│    4. Escalate if needed → T2 / Supervisor           │
+│    5. Submit approval if financial action             │
+│    6. Resolve + add resolution code                  │
+└──────────────────────────────────────────────────────┘
 ```
 
 **Design principles:**
