@@ -3,8 +3,12 @@
 Adds roles and users tables (for ORM-based auth) alongside the existing
 cx_users table. Maps test user IDs to match cx_users IDs so that
 agent1 (user_id=1) sees cases assigned to agent_id=1 in the CX data.
+
+On EC2 or when DB is not in mcdr_mock/, set MCDR_CX_DB_PATH to the DB file path
+(e.g. /home/ubuntu/MCDR/data/mcdr_cx.db or data/mcdr_cx.db).
 """
 
+import os
 import sqlite3
 import bcrypt
 
@@ -12,7 +16,7 @@ import bcrypt
 def hash_pw(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
-DB_PATH = "mcdr_mock/mcdr_cx.db"
+DB_PATH = os.environ.get("MCDR_CX_DB_PATH", "mcdr_mock/mcdr_cx.db")
 
 ROLES = [
     (1, "admin", "Full system administrator"),

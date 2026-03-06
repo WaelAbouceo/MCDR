@@ -60,9 +60,6 @@ export default function VerificationWizard({
         method: 'verbal',
       });
       setSession(s);
-      if (caseId) {
-        await verification.linkToCase(s.verification_id, { case_id: parseInt(caseId) });
-      }
       toast('Verification session started', 'success');
     } catch (err) {
       toast(err.message || 'Failed to start verification', 'error');
@@ -78,6 +75,9 @@ export default function VerificationWizard({
       const updated = await verification.updateStep(session.verification_id, { step, passed });
       setSession(updated);
       if (updated.status === 'passed') {
+        if (caseId) {
+          await verification.linkToCase(updated.verification_id, { case_id: Number(caseId) }).catch(() => {});
+        }
         toast('Identity verified successfully', 'success');
         onComplete?.(updated);
       } else if (updated.status === 'failed') {

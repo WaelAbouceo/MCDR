@@ -212,22 +212,49 @@ async def readiness():
 
 
 # ─── Serve frontend SPA (when running in Docker / single container) ─
-_frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-if _frontend_dist.is_dir():
+def _frontend_index_path() -> Path | None:
+    """Resolve frontend dist path (works from /app in Docker or repo root locally)."""
+    for base in (
+        Path(__file__).resolve().parent.parent,
+        Path("/app"),
+    ):
+        index = base / "frontend" / "dist" / "index.html"
+        if index.is_file():
+            return index
+    return None
+
+
+_frontend_index = _frontend_index_path()
+if _frontend_index is not None:
+    _frontend_dist = _frontend_index.parent
     _assets = _frontend_dist / "assets"
     if _assets.is_dir():
         app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
-    _index = _frontend_dist / "index.html"
-    if _index.is_file():
-        @app.get("/", include_in_schema=False)
-        async def serve_root():
-            return FileResponse(str(_index))
 
-        @app.get("/{full_path:path}", include_in_schema=False)
-        async def serve_spa(full_path: str):
-            if full_path.startswith("api"):
-                return JSONResponse(status_code=404, content={"detail": "Not found"})
-            return FileResponse(str(_index))
+    @app.get("/", include_in_schema=False)
+    async def serve_root():
+        return FileResponse(str(_frontend_index))
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api"):
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
+        # Serve static files from dist root (logo, favicon, etc.) so they load on EC2
+        safe_path = full_path.split("?")[0].lstrip("/")
+        if ".." in safe_path:
+            return FileResponse(str(_frontend_index))
+        static_file = (_frontend_dist / safe_path).resolve()
+        base = _frontend_dist.resolve()
+        if static_file.is_file() and base in static_file.parents:
+            return FileResponse(str(static_file))
+        return FileResponse(str(_frontend_index))
+else:
+    @app.get("/", include_in_schema=False)
+    async def serve_root_missing():
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Frontend not built. Run: cd frontend && npm run build"},
+        )
 
 # ─── Global Exception Handlers ──────────────────────────────
 

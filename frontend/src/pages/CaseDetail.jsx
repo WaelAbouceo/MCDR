@@ -522,6 +522,16 @@ export default function CaseDetail() {
           )}
 
           {/* Investor info */}
+          {caseData?.investor_id && !investor && (
+            <div className="card p-5 border-amber-200 bg-amber-50">
+              <h3 className="text-sm font-semibold text-slate-600 mb-2 flex items-center gap-2">
+                <User size={16} /> Investor
+              </h3>
+              <p className="text-sm text-amber-800">
+                Investor not found in registry (ID: {caseData.investor_id}). Case may reference a removed or test investor.
+              </p>
+            </div>
+          )}
           {investor && (
             <div className="card p-5">
               <h3 className="text-sm font-semibold text-slate-600 mb-3 flex items-center gap-2">

@@ -50,7 +50,7 @@ async def store_refresh_token(token: str, user_id: int, family_id: str) -> None:
             await _redis.expire(f"user_tokens:{user_id}", ttl)
             return
         except Exception as e:
-            logger.warning("Redis unavailable for refresh store: %s", e)
+            logger.debug("Redis unavailable for refresh store: %s", e)
 
     _mem_refresh[token] = {**data, "expires_at": time.time() + ttl}
 
@@ -67,7 +67,7 @@ async def validate_refresh_token(token: str) -> Optional[dict]:
             await _redis.srem(f"user_tokens:{data['user_id']}", token)
             return data
         except Exception as e:
-            logger.warning("Redis unavailable for refresh validate: %s", e)
+            logger.debug("Redis unavailable for refresh validate: %s", e)
 
     data = _mem_refresh.pop(token, None)
     if not data:
@@ -93,7 +93,7 @@ async def invalidate_family(user_id: int, family_id: str) -> None:
             logger.warning("Token family %s invalidated for user %d (reuse detected)", family_id, user_id)
             return
         except Exception as e:
-            logger.warning("Redis unavailable for family invalidation: %s", e)
+            logger.debug("Redis unavailable for family invalidation: %s", e)
 
     to_remove = [k for k, v in _mem_refresh.items()
                  if v.get("family_id") == family_id and v.get("user_id") == str(user_id)]
@@ -111,7 +111,7 @@ async def revoke_access_token(jti: str, ttl: int) -> None:
             await _redis.setex(f"revoked:{jti}", ttl, "1")
             return
         except Exception as e:
-            logger.warning("Redis unavailable for token revoke: %s", e)
+            logger.debug("Redis unavailable for token revoke: %s", e)
 
     _mem_revoked.add(jti)
 
@@ -121,7 +121,7 @@ async def is_token_revoked(jti: str) -> bool:
         try:
             return await _redis.exists(f"revoked:{jti}") > 0
         except Exception as e:
-            logger.warning("Redis unavailable for revocation check: %s", e)
+            logger.debug("Redis unavailable for revocation check: %s", e)
 
     return jti in _mem_revoked
 
@@ -141,7 +141,7 @@ async def revoke_all_user_tokens(user_id: int) -> int:
                 count = len(tokens)
             return count
         except Exception as e:
-            logger.warning("Redis unavailable for user token revocation: %s", e)
+            logger.debug("Redis unavailable for user token revocation: %s", e)
 
     to_remove = [k for k, v in _mem_refresh.items() if v.get("user_id") == str(user_id)]
     for k in to_remove:

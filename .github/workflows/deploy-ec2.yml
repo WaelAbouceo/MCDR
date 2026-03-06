@@ -1,0 +1,35 @@
+# Deploy MCDR to EC2 on push to main (or manual run).
+# Requires GitHub secrets: EC2_HOST, EC2_SSH_KEY (see docs/DEPLOY_EC2_CI.md).
+
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script_stderr: true
+          script: |
+            set -e
+            cd ~/MCDR || { echo "~/MCDR not found. Clone the repo and set up .env + data first."; exit 1; }
+            git fetch origin main && git reset --hard origin/main
+            docker rm -f mcdr 2>/dev/null || true
+            docker build -t mcdr-cx:latest .
+            docker run -d --name mcdr -p 80:8000 \
+              -v $HOME/MCDR/data:/data \
+              --env-file $HOME/MCDR/.env \
+              --restart unless-stopped \
+              mcdr-cx:latest
+            echo "Deployed. Waiting for health..."
+            sleep 15
+            curl -sf http://localhost:80/health || true

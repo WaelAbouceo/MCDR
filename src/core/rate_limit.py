@@ -85,7 +85,7 @@ async def is_locked_out_async(key: str) -> bool:
         lockout = await _redis.get(f"lockout:{key}")
         return lockout is not None
     except Exception as e:
-        logger.warning("Redis unavailable for rate check, falling back to memory: %s", e)
+        logger.debug("Redis unavailable for rate check, falling back to memory: %s", e)
         return is_locked_out(key)
 
 
@@ -109,7 +109,7 @@ async def record_failure_async(ip: str, username: str) -> bool:
                 locked = True
         return locked
     except Exception as e:
-        logger.warning("Redis unavailable for rate record, falling back to memory: %s", e)
+        logger.debug("Redis unavailable for rate record, falling back to memory: %s", e)
         return record_failure(ip, username)
 
 
@@ -123,7 +123,7 @@ async def record_success_async(ip: str, username: str) -> None:
             await pipe.delete(f"lockout:{key}")
         await pipe.execute()
     except Exception as e:
-        logger.warning("Redis unavailable for rate clear, falling back to memory: %s", e)
+        logger.debug("Redis unavailable for rate clear, falling back to memory: %s", e)
         record_success(ip, username)
 
 
