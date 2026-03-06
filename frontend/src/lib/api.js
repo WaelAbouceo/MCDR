@@ -136,6 +136,7 @@ export const cx = {
   caseStats: () => api.get('/cx/cases/stats'),
   slaStats: () => api.get('/cx/sla/stats'),
   searchCases: (params) => api.get('/cx/cases/search', params),
+  searchCasesPaginated: (params) => api.get('/cx/cases/search', params),
   getCase: (id) => api.get(`/cx/cases/${id}`),
   getCaseByNumber: (num) => api.get(`/cx/cases/number/${num}`),
   investorCases: (id) => api.get(`/cx/cases/investor/${id}`),

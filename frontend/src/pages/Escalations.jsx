@@ -1,22 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cx } from '../lib/api';
+import Pagination from '../components/Pagination';
 import Loader from '../components/Loader';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import { AlertTriangle } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
+const PAGE_SIZE = 25;
+
 export default function Escalations() {
   const [cases, setCases] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [offset, setOffset] = useState(0);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    cx.searchCases({ status: 'escalated', limit: 100 })
-      .then(setCases)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = await cx.searchCasesPaginated({
+        status: 'escalated',
+        limit: PAGE_SIZE,
+        offset,
+      });
+      setCases(result.items || []);
+      setTotal(result.total ?? 0);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [offset]);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) return <Loader />;
 
@@ -25,7 +42,7 @@ export default function Escalations() {
       <div className="flex items-center gap-2">
         <AlertTriangle className="text-red-500" size={24} />
         <h1 className="text-2xl font-bold">Escalated Cases</h1>
-        <span className="badge badge-escalated ml-2">{cases.length}</span>
+        <span className="badge badge-escalated ml-2">{total}</span>
       </div>
 
       {cases.length === 0 ? (
@@ -62,6 +79,8 @@ export default function Escalations() {
           ))}
         </div>
       )}
+
+      <Pagination offset={offset} limit={PAGE_SIZE} total={total} onChange={setOffset} />
     </div>
   );
 }

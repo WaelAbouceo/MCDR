@@ -46,11 +46,11 @@ export default function Dashboard() {
           const hasPerfAccess = role === 'senior_agent';
           const [agentStats, agentCases, perf, qaData] = await Promise.all([
             cx.agentStats(user.id).catch(() => null),
-            cx.agentCases(user.id, 50).catch(() => []),
+            cx.agentCases(user.id, 10).catch(() => []),
             hasPerfAccess ? cx.agentPerformance(user.id).catch(() => null) : Promise.resolve(null),
             cx.agentQa(user.id).catch(() => null),
           ]);
-          setRecentCases(agentCases.slice(0, 10));
+          setRecentCases(agentCases);
           setStats({
             cases: agentStats || { total_cases: agentCases.length, by_status: countBy(agentCases, 'status') },
             calls: { total_calls: agentStats?.total_calls ?? 0 },
@@ -64,8 +64,8 @@ export default function Dashboard() {
             cx.slaStats().catch(() => null),
           ]);
           setStats({ cases: caseStats, calls: callStats, sla: slaStats });
-          const all = await cx.searchCases({ limit: 10 }).catch(() => []);
-          setRecentCases(all);
+          const result = await cx.searchCases({ limit: 10 }).catch(() => ({ items: [] }));
+          setRecentCases(result.items || result || []);
         }
 
         if (role === 'admin') {

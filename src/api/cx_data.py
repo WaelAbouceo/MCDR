@@ -99,13 +99,14 @@ async def search_cases(
     priority: str | None = None,
     category: str | None = None,
     investor_id: int | None = None,
+    q: str | None = None,
     limit: int = Query(default=50, le=200),
-    offset: int = 0,
+    offset: int = Query(default=0, ge=0),
     _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
 ):
     return cx_data_service.search_cases(
         status=status, priority=priority, category=category,
-        investor_id=investor_id, limit=limit, offset=offset,
+        investor_id=investor_id, q=q, limit=limit, offset=offset,
     )
 
 

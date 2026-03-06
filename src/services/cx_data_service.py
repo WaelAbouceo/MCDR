@@ -7,6 +7,7 @@ MCDR investors.
 
 import logging
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Generator
@@ -17,17 +18,37 @@ logger = logging.getLogger("mcdr.cx_data")
 
 settings = get_settings()
 
+_local = threading.local()
 
-@contextmanager
-def _cx_conn() -> Generator[sqlite3.Connection, None, None]:
+
+def _get_cached_conn() -> sqlite3.Connection:
+    conn = getattr(_local, "cx_conn", None)
+    if conn is not None:
+        try:
+            conn.execute("SELECT 1")
+            return conn
+        except Exception:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            _local.cx_conn = None
+
     conn = sqlite3.connect(settings.mcdr_cx_db_path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA busy_timeout = 5000")
-    conn.execute(f"ATTACH DATABASE '{settings.mcdr_core_db_path}' AS core")
-    try:
-        yield conn
-    finally:
-        conn.close()
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA cache_size = -8000")  # 8MB cache
+    conn.execute(
+        f"ATTACH DATABASE '{settings.mcdr_core_db_path}' AS core"
+    )
+    _local.cx_conn = conn
+    return conn
+
+
+@contextmanager
+def _cx_conn() -> Generator[sqlite3.Connection, None, None]:
+    yield _get_cached_conn()
 
 
 # ─── Taxonomy ────────────────────────────────────────────────────
@@ -163,9 +184,10 @@ def search_cases(
     priority: str | None = None,
     category: str | None = None,
     investor_id: int | None = None,
+    q: str | None = None,
     limit: int = 50,
     offset: int = 0,
-) -> list[dict]:
+) -> dict:
     clauses: list[str] = []
     params: list = []
     if status:
@@ -180,13 +202,40 @@ def search_cases(
     if investor_id:
         clauses.append("c.investor_id = ?")
         params.append(investor_id)
+    if q:
+        clauses.append(
+            "(c.subject LIKE ? OR c.case_number LIKE ? OR inv.full_name LIKE ?)"
+        )
+        like = f"%{q}%"
+        params.extend([like, like, like])
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-    query = _CASE_SELECT + f"{where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?"
-    params.extend([limit, offset])
+
+    needs_investor_join = bool(q or investor_id)
+    if needs_investor_join:
+        count_sql = (
+            "SELECT COUNT(*) FROM cases c "
+            "JOIN case_taxonomy t ON c.taxonomy_id = t.taxonomy_id "
+            "LEFT JOIN core.investors inv "
+            "ON c.investor_id = inv.investor_id " + where
+        )
+    else:
+        count_sql = (
+            "SELECT COUNT(*) FROM cases c "
+            "JOIN case_taxonomy t ON c.taxonomy_id = t.taxonomy_id "
+            + where
+        )
+    query = (
+        _CASE_SELECT
+        + f"{where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?"
+    )
+
     with _cx_conn() as conn:
-        rows = conn.execute(query, params).fetchall()
-        return [dict(r) for r in rows]
+        total = conn.execute(count_sql, params).fetchone()[0]
+        rows = conn.execute(
+            query, params + [limit, offset]
+        ).fetchall()
+        return {"items": [dict(r) for r in rows], "total": total}
 
 
 def case_stats() -> dict:

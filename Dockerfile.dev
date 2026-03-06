@@ -1,0 +1,33 @@
+# ── Stage 1: Build frontend ──────────────────────────────────
+FROM node:20-alpine AS frontend-build
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json* ./
+RUN npm ci --ignore-scripts 2>/dev/null || npm install
+COPY frontend/ .
+RUN npm run build && test -f /build/dist/index.html || (echo "Frontend build failed: no index.html" && exit 1)
+RUN cp -r public/. dist/ 2>/dev/null || true
+
+# ── Stage 2: Python API (dev / POC with SQLite) ─────────────
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src/ src/
+COPY db/ db/
+COPY mcdr_mock/*.py mcdr_mock/
+COPY seed_poc.py .
+COPY scripts/docker-entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
+
+COPY --from=frontend-build /build/dist/ frontend/dist/
+RUN test -f /app/frontend/dist/index.html || (echo "Frontend not in image" && exit 1)
+
+EXPOSE 8100
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')" || exit 1
+
+ENTRYPOINT ["/entrypoint.sh"]

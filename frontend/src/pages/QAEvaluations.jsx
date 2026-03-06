@@ -1,22 +1,40 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { cx, qa } from '../lib/api';
+import { qa } from '../lib/api';
+import Pagination from '../components/Pagination';
 import Loader from '../components/Loader';
 import StatCard from '../components/StatCard';
-import { ClipboardCheck, Star, TrendingUp, Users } from 'lucide-react';
+import { ClipboardCheck, Star, Users } from 'lucide-react';
 import { format } from 'date-fns';
+
+const PAGE_SIZE = 25;
 
 export default function QAEvaluations() {
   const [evals, setEvals] = useState([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [offset, setOffset] = useState(0);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    qa.listEvaluations({ limit: 50 })
-      .then(setEvals)
-      .catch(console.error)
-      .finally(() => setLoading(false));
-  }, []);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await qa.listEvaluations({ limit: PAGE_SIZE, offset });
+      if (Array.isArray(data)) {
+        setEvals(data);
+        setTotal(data.length);
+      } else {
+        setEvals(data.items || []);
+        setTotal(data.total ?? (data.items || []).length);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  }, [offset]);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) return <Loader />;
 
@@ -31,10 +49,10 @@ export default function QAEvaluations() {
       </h1>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Total Evaluations" value={evals.length} icon={ClipboardCheck} color="teal" />
-        <StatCard label="Avg Score" value={avgScore} icon={Star} color="yellow" />
+        <StatCard label="Total Evaluations" value={total || evals.length} icon={ClipboardCheck} color="teal" />
+        <StatCard label="Avg Score (this page)" value={avgScore} icon={Star} color="yellow" />
         <StatCard
-          label="Unique Agents"
+          label="Unique Agents (this page)"
           value={new Set(evals.map(e => e.agent_id)).size}
           icon={Users}
           color="purple"
@@ -82,6 +100,8 @@ export default function QAEvaluations() {
           </tbody>
         </table>
       </div>
+
+      <Pagination offset={offset} limit={PAGE_SIZE} total={total} onChange={setOffset} />
     </div>
   );
 }

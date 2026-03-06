@@ -95,39 +95,45 @@ async def _sla_compliance(db: AsyncSession, start: datetime, end: datetime) -> l
 async def _agent_performance(db: AsyncSession, start: datetime, end: datetime) -> list[AgentPerformanceRow]:
     resolved_minutes = func.extract("epoch", Case.resolved_at - Case.created_at) / 60
 
+    breach_sub = (
+        select(Case.agent_id, func.count(SLABreach.id).label("breach_count"))
+        .join(SLABreach, SLABreach.case_id == Case.id)
+        .where(Case.created_at.between(start, end))
+        .group_by(Case.agent_id)
+        .subquery()
+    )
+
+    qa_sub = (
+        select(
+            QAEvaluation.agent_id,
+            func.avg(QAEvaluation.total_score).label("avg_qa"),
+        )
+        .where(QAEvaluation.evaluated_at.between(start, end))
+        .group_by(QAEvaluation.agent_id)
+        .subquery()
+    )
+
     stmt = (
         select(
             User.id,
             User.full_name,
             func.count(Case.id).label("cases_handled"),
             func.avg(resolved_minutes).label("avg_resolution_minutes"),
+            func.coalesce(breach_sub.c.breach_count, 0).label("breach_count"),
+            qa_sub.c.avg_qa.label("avg_qa_score"),
         )
         .join(Case, Case.agent_id == User.id)
+        .outerjoin(breach_sub, breach_sub.c.agent_id == User.id)
+        .outerjoin(qa_sub, qa_sub.c.agent_id == User.id)
         .where(Case.created_at.between(start, end))
-        .group_by(User.id, User.full_name)
+        .group_by(User.id, User.full_name, breach_sub.c.breach_count, qa_sub.c.avg_qa)
         .order_by(func.count(Case.id).desc())
     )
     result = await db.execute(stmt)
     rows = []
     for r in result:
-        avg_qa = await db.execute(
-            select(func.avg(QAEvaluation.total_score)).where(
-                QAEvaluation.agent_id == r.id,
-                QAEvaluation.evaluated_at.between(start, end),
-            )
-        )
-        qa_score = avg_qa.scalar_one_or_none()
-
-        total = await db.execute(
-            select(func.count(Case.id)).where(Case.agent_id == r.id, Case.created_at.between(start, end))
-        )
-        breached = await db.execute(
-            select(func.count(SLABreach.id))
-            .join(Case, SLABreach.case_id == Case.id)
-            .where(Case.agent_id == r.id, Case.created_at.between(start, end))
-        )
-        total_count = total.scalar_one()
-        breach_count = breached.scalar_one()
+        total_count = r.cases_handled
+        breach_count = r.breach_count or 0
         compliance = ((total_count - breach_count) / max(total_count, 1)) * 100
 
         rows.append(AgentPerformanceRow(
@@ -136,6 +142,6 @@ async def _agent_performance(db: AsyncSession, start: datetime, end: datetime) -
             cases_handled=r.cases_handled,
             avg_resolution_minutes=round(r.avg_resolution_minutes, 1) if r.avg_resolution_minutes else None,
             sla_compliance_pct=round(compliance, 1),
-            avg_qa_score=round(qa_score, 1) if qa_score else None,
+            avg_qa_score=round(r.avg_qa_score, 1) if r.avg_qa_score else None,
         ))
     return rows

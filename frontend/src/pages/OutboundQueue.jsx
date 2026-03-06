@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../lib/auth';
 import { outbound } from '../lib/api';
 import { StatusBadge, PriorityBadge } from '../components/StatusBadge';
 import StatCard from '../components/StatCard';
+import Pagination from '../components/Pagination';
 import { useToast } from '../components/Toast';
 import Loader from '../components/Loader';
 import { format } from 'date-fns';
@@ -48,27 +49,36 @@ export default function OutboundQueue() {
   });
   const [selectedTask, setSelectedTask] = useState(null);
   const [outcome, setOutcome] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
+  const PAGE_SIZE = 25;
 
-  async function loadData() {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = {};
+      const params = { limit: PAGE_SIZE, offset };
       if (filter.status) params.status = filter.status;
       if (filter.task_type) params.task_type = filter.task_type;
       const [taskList, taskStats] = await Promise.all([
         outbound.list(params),
         outbound.stats(),
       ]);
-      setTasks(taskList);
+      setTasks(Array.isArray(taskList) ? taskList : taskList.items || []);
+      setTotal(taskStats?.total || (Array.isArray(taskList) ? taskList.length : taskList.total || 0));
       setStats(taskStats);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-  }
+  }, [filter.status, filter.task_type, offset]);
 
-  useEffect(() => { loadData(); }, [filter.status, filter.task_type]);
+  useEffect(() => { loadData(); }, [loadData]);
+
+  function handleFilterChange(key, value) {
+    setOffset(0);
+    setFilter(prev => ({ ...prev, [key]: value }));
+  }
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -220,7 +230,7 @@ export default function OutboundQueue() {
         <Filter size={16} className="text-slate-400" />
         <select
           value={filter.status}
-          onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+          onChange={(e) => handleFilterChange('status', e.target.value)}
           className="input py-1.5 w-auto text-sm"
         >
           <option value="">All Statuses</option>
@@ -231,7 +241,7 @@ export default function OutboundQueue() {
         </select>
         <select
           value={filter.task_type}
-          onChange={(e) => setFilter({ ...filter, task_type: e.target.value })}
+          onChange={(e) => handleFilterChange('task_type', e.target.value)}
           className="input py-1.5 w-auto text-sm"
         >
           <option value="">All Types</option>
@@ -339,6 +349,8 @@ export default function OutboundQueue() {
           ))
         )}
       </div>
+
+      <Pagination offset={offset} limit={PAGE_SIZE} total={total} onChange={setOffset} />
     </div>
   );
 }

@@ -1,0 +1,17 @@
+version: "3.9"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8100:8100"
+    volumes:
+      - mcdr_mock_data:/app/mcdr_mock
+    environment:
+      - ENVIRONMENT=development
+      - CORS_ORIGINS=http://localhost:8100,http://127.0.0.1:8100
+
+volumes:
+  mcdr_mock_data:
