@@ -5,6 +5,8 @@ COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci --ignore-scripts 2>/dev/null || npm install
 COPY frontend/ .
 RUN npm run build && test -f /build/dist/index.html || (echo "Frontend build failed: no index.html" && exit 1)
+# Ensure public assets (logo, favicon) are in dist — Vite may not copy them in all setups
+RUN cp -r public/. dist/ 2>/dev/null || true
 
 # ── Stage 2: Python API ─────────────────────────────────────
 FROM python:3.12-slim AS runtime
