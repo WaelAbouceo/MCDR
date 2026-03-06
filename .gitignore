@@ -19,11 +19,11 @@ venv/
 *.key
 
 # SQLite databases (generated)
-*.db
-*.db-shm
-*.db-wal
-*.db-journal
-mcdr_mock/*.db
+# *.db
+# *.db-shm
+# *.db-wal
+# *.db-journal
+# mcdr_mock/*.db
 
 # IDE
 .idea/
