@@ -231,6 +231,18 @@ if _frontend_index is not None:
     if _assets.is_dir():
         app.mount("/assets", StaticFiles(directory=str(_assets)), name="assets")
 
+    # Explicit routes for logo and favicon so they always serve from dist (avoids path/cache issues)
+    _logo = _frontend_dist / "mcdr-logo.svg"
+    _favicon = _frontend_dist / "favicon.svg"
+    if _logo.is_file():
+        @app.get("/mcdr-logo.svg", include_in_schema=False)
+        async def serve_logo():
+            return FileResponse(str(_logo))
+    if _favicon.is_file():
+        @app.get("/favicon.svg", include_in_schema=False)
+        async def serve_favicon():
+            return FileResponse(str(_favicon))
+
     @app.get("/", include_in_schema=False)
     async def serve_root():
         return FileResponse(str(_frontend_index))
