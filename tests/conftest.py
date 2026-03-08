@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -9,8 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from src.database import Base, CustomerBase, get_customer_db, get_cx_db
 from src.main import app
 
-TEST_CX_DB = "sqlite+aiosqlite:///./test_cx.db"
-TEST_CUSTOMER_DB = "sqlite+aiosqlite:///./test_customer.db"
+TEST_CX_DB = os.environ.get(
+    "TEST_DATABASE_URL",
+    "mysql+aiomysql://mcdr:mcdr_pass@localhost:3306/test_mcdr_cx",
+)
+TEST_CUSTOMER_DB = os.environ.get(
+    "TEST_CUSTOMER_DB_URL",
+    "mysql+aiomysql://mcdr:mcdr_pass@localhost:3306/test_mcdr_customer",
+)
 
 cx_engine = create_async_engine(TEST_CX_DB, echo=False)
 customer_engine = create_async_engine(TEST_CUSTOMER_DB, echo=False)

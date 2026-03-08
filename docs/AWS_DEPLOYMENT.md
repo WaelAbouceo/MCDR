@@ -14,7 +14,7 @@ This guide covers ways to run the MCDR CX Platform on AWS. Choose based on your 
 
 ## Option 1: Single EC2 with Docker (simplest)
 
-Best for: demos, internal use, or a first deployment. One server runs the app and serves both API and frontend. SQLite and in-memory rate limiting are used (no Redis required for a single instance).
+Best for: demos, internal use, or a first deployment. One server runs the app and serves both API and frontend. MySQL (Docker) and in-memory rate limiting are used (no Redis required for a single instance).
 
 ### 1. Build the image locally
 
@@ -56,7 +56,7 @@ sudo usermod -aG docker ubuntu
 Create a directory and an env file on the server (e.g. `/home/ec2-user/mcdr`):
 
 ```bash
-mkdir -p ~/mcdr/data
+mkdir -p ~/mcdr
 cd ~/mcdr
 nano .env
 ```
@@ -69,55 +69,46 @@ SECRET_KEY=<generate-with: python3 -c "import secrets; print(secrets.token_hex(3
 CORS_ORIGINS=https://your-domain.com
 # Or for testing with IP: http://YOUR_EC2_PUBLIC_IP
 
-# SQLite paths inside the container (we mount a volume)
-MCDR_CX_DB_PATH=/data/mcdr_cx.db
-MCDR_CORE_DB_PATH=/data/mcdr_core.db
-MCDR_MOBILE_DB_PATH=/data/mcdr_mobile.db
-DATABASE_URL=sqlite+aiosqlite:////data/mcdr_cx.db
-CUSTOMER_DB_URL=sqlite+aiosqlite:////data/mcdr_cx.db
+# MySQL connection URLs (use docker-compose for MySQL + phpMyAdmin)
+DATABASE_URL=mysql+aiomysql://user:pass@mysql:3306/mcdr_cx
+CUSTOMER_DB_URL=mysql+aiomysql://readonly:pass@mysql:3306/mcdr_customer
 ```
 
-The app expects DB files under `/data` in the container. Copy your existing SQLite DBs into `~/mcdr/data/` (e.g. from `mcdr_mock/`) or run the seed after first start (see below).
+Run with Docker Compose (recommended for MySQL):
 
-Run the container:
+```bash
+docker compose up -d
+```
+
+Or run the container standalone (ensure MySQL is available):
 
 ```bash
 docker run -d \
   --name mcdr \
   -p 80:8000 \
-  -v $(pwd)/data:/data \
   --env-file .env \
   --restart unless-stopped \
   mcdr-cx:latest
 ```
 
-**Note:** The default Dockerfile uses `/app/frontend/dist` and the app’s default DB paths. If your image was built with paths under `mcdr_mock/`, you can override with env vars so the app uses `/data`:
-
-- Ensure `mcdr_cx.db` (and optionally `mcdr_core.db`, `mcdr_mobile.db`) exist in `~/mcdr/data/`.  
-- **Option A — Create DBs on the server:** run the init script (no need to copy files): see [Create databases on EC2](#create-databases-on-ec2) below.  
-- **Option B — Copy from your machine:** `scp mcdr_mock/mcdr_cx.db ec2-user@YOUR_EC2_IP:~/mcdr/data/`.
+**Note:** Use `docker compose up -d` to start MySQL, phpMyAdmin, and the application together. Ensure `DATABASE_URL` and `CUSTOMER_DB_URL` point at your MySQL container/service.
 
 ### 5. Create databases on EC2
 
-If you did not copy DB files, you can generate them on the server so the app has schema and seed data (including demo logins):
+When using Docker Compose with MySQL, the databases (`mcdr_cx`, `mcdr_core`, `mcdr_mobile`, `mcdr_customer`) are created automatically. To seed data:
 
 ```bash
 cd ~/MCDR
-chmod +x scripts/init_db_ec2.sh
-./scripts/init_db_ec2.sh data
+python mcdr_mock/generate_core_data.py
+python mcdr_mock/generate_cx_data.py
+python mcdr_mock/seed_poc.py
 ```
 
-This script (1) creates `mcdr_core.db` and `mcdr_mobile.db`, (2) creates `mcdr_cx.db` with cases, calls, and CX users, (3) seeds auth (roles and test users with passwords). Step 2 may take 2–5 minutes. Requires Python 3 and pip; the script installs `faker` and `bcrypt` if needed. After it finishes, set permissions and restart the container:
+If using a custom init script, ensure it targets MySQL (not SQLite). Restart the container after seeding:
 
 ```bash
-chmod 666 data/*.db
-docker restart mcdr
+docker compose restart
 ```
-
-### 6. Seed the database (if you only copied empty or partial DBs)
-
-If you already have `mcdr_cx.db` with `cx_users` but no auth tables, run:  
-`MCDR_CX_DB_PATH=/home/ubuntu/MCDR/data/mcdr_cx.db python3 seed_poc.py` from the repo root. Otherwise use the init script above to create everything.
 
 ### 7. Open the app
 
@@ -217,7 +208,7 @@ High-level steps:
 - Set **CORS_ORIGINS** to your real frontend origin(s); no `localhost` in production.
 - Prefer **HTTPS** (ALB with ACM certificate or a reverse proxy with Let’s Encrypt).
 - Restrict **security groups** to the minimum required (e.g. 80/443 from the internet; 22 only from your IP or a bastion).
-- For production data, use **RDS** (and optionally ElastiCache) instead of SQLite.
+- For production data, use **RDS (MySQL/PostgreSQL)** or MySQL Docker and optionally ElastiCache.
 
 ---
 

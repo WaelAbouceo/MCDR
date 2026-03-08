@@ -88,16 +88,16 @@ Investor dials MCDR hotline (+20-2-2123-4567)
 ┌──────────────────────────────────────────────────────┐
 │  MCDR ANI RESOLUTION + SCREEN-POP                    │
 │                                                      │
-│  1. ANI lookup → Mobile App DB (mcdr_mobile.db)      │
+│  1. ANI lookup → Mobile App DB (mcdr_mobile)         │
 │     +201012345678 → investor_id: 12345               │
 │                                                      │
-│  2. Investor profile → Core Registry (mcdr_core.db)  │
+│  2. Investor profile → Core Registry (mcdr_core)     │
 │     Name, National ID, Account Status, Type          │
 │                                                      │
 │  3. Portfolio → Holdings + Securities                │
 │     12 positions, EGP 1.2M total value               │
 │                                                      │
-│  4. Case history → CX DB (mcdr_cx.db)               │
+│  4. Case history → CX DB (mcdr_cx)                  │
 │     2 open cases, 5 recent calls                     │
 │                                                      │
 │  5. Risk flags computed:                             │
@@ -142,14 +142,17 @@ Investor dials MCDR hotline (+20-2-2123-4567)
 
 - Python 3.11+
 - Node.js 18+
-- SQLite (included, used for POC)
+- MySQL (Docker + phpMyAdmin for POC/development)
 
 ### Backend
 
 ```bash
+# Start MySQL and services via Docker Compose
+docker compose up -d
+
 # Install dependencies
 pip install -r requirements.txt
-pip install aiosqlite bcrypt
+pip install aiomysql pymysql bcrypt
 
 # Generate mock data (if not already present)
 python mcdr_mock/generate_core_data.py
@@ -209,7 +212,7 @@ MCDR/
 │   │   └── customer.py           # CustomerProfile (separate DB)
 │   ├── schemas/                  # Pydantic request/response schemas
 │   ├── services/                 # Business logic layer
-│   │   ├── cx_data_service.py    # CX operational data (raw SQLite)
+│   │   ├── cx_data_service.py    # CX operational data (MySQL)
 │   │   ├── call_simulator.py     # CTI simulation + in-memory call queue
 │   │   ├── audit_service.py      # Audit logging service
 │   │   └── rbac_service.py       # Permission checks
@@ -276,7 +279,7 @@ MCDR/
 | ORM | SQLAlchemy (async) | 2.0+ |
 | Validation | Pydantic | 2.10+ |
 | Auth | python-jose (JWT) + bcrypt | — |
-| Database (POC) | SQLite + aiosqlite | — |
+| Database (POC) | MySQL + aiomysql + pymysql | — |
 | Database (Prod) | PostgreSQL + asyncpg | — |
 
 ### Frontend
@@ -300,8 +303,8 @@ All configuration is via environment variables or `.env` file.
 | `ENVIRONMENT` | `development` | `development` / `staging` / `production` |
 | `SECRET_KEY` | `poc-secret-key-...` | JWT signing key. **Must override in production** (≥32 chars) |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | JWT token expiry |
-| `DATABASE_URL` | SQLite path | Main CX database connection |
-| `CUSTOMER_DB_URL` | SQLite path | Customer database (read-only zone) |
+| `DATABASE_URL` | MySQL connection URL | Main CX database connection |
+| `CUSTOMER_DB_URL` | MySQL connection URL | Customer database (read-only zone) |
 | `CORS_ORIGINS` | `http://localhost:3000,...` | Comma-separated allowed origins |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection (future use) |
@@ -317,13 +320,13 @@ When `ENVIRONMENT=production`:
 
 ## Database Architecture
 
-### Three-Database Design
+### Three-Database Design (MySQL)
 
-| Database | File (POC) | Access | Contains |
-|----------|-----------|--------|----------|
-| **CX Database** | `mcdr_cx.db` | Read/Write | Cases, calls, users, roles, SLA, escalations, QA, audit logs |
-| **Core Database** | `mcdr_core.db` | Read-Only | Investors, holdings, securities |
-| **Mobile Database** | `mcdr_mobile.db` | Read-Only | App users, OTP records |
+| Database | MySQL Database | Access | Contains |
+|----------|----------------|--------|----------|
+| **CX Database** | `mcdr_cx` | Read/Write | Cases, calls, users, roles, SLA, escalations, QA, audit logs |
+| **Core Database** | `mcdr_core` | Read-Only | Investors, holdings, securities |
+| **Mobile Database** | `mcdr_mobile` | Read-Only | App users, OTP records |
 
 ### Key Tables
 
@@ -519,7 +522,7 @@ Every response includes:
 | JWT secrets | `SECRET_KEY` env var, validated ≥ 32 chars in production |
 | Audit logs | 30+ sensitive fields recursively masked as `***` up to 5 levels deep |
 | Token storage | `sessionStorage` — cleared when browser tab closes |
-| Database (POC) | SQLite on local disk |
+| Database (POC) | MySQL (Docker) |
 | Database (Production) | PostgreSQL with SSL (`DATABASE_SSL=require` or `verify-full`) |
 
 ### Data Security — In Transit
@@ -750,7 +753,7 @@ The readiness endpoint verifies connectivity to both the CX and Core databases.
 - [ ] Set `ENVIRONMENT=production` (enforces secret key validation, disables /docs)
 - [ ] Set strong `SECRET_KEY` (≥32 characters, high entropy)
 - [ ] Configure `CORS_ORIGINS` for your frontend domain
-- [ ] Use PostgreSQL (not SQLite) for both databases
+- [ ] Use MySQL (via Docker Compose) or PostgreSQL for both databases
 - [ ] Configure reverse proxy (nginx) with TLS
 - [ ] Set `LOG_LEVEL=WARNING` for production
 - [ ] Verify `/health/ready` returns 200
@@ -766,7 +769,7 @@ The readiness endpoint verifies connectivity to both the CX and Core databases.
 ```bash
 # Backend
 pip install -r requirements.txt
-pip install aiosqlite bcrypt
+pip install aiomysql pymysql bcrypt
 uvicorn src.main:app --port 8100 --reload
 
 # Frontend (separate terminal)
@@ -778,7 +781,7 @@ npm run dev
 ### Running Tests
 
 ```bash
-pip install aiosqlite
+pip install aiomysql pymysql
 pytest -v
 ```
 
@@ -796,4 +799,4 @@ pytest -v
 
 6. **CTI simulation**: The call simulation system mimics Cisco IVR/ACD events with an in-memory call queue, allowing end-to-end testing of the agent screen-pop workflow without real telephony infrastructure.
 
-7. **POC vs Production**: SQLite is used for the POC with raw SQL in `cx_data_service.py`. Production should use PostgreSQL with the SQLAlchemy models in `src/models/`.
+7. **POC vs Production**: MySQL (via Docker) is used for the POC with raw SQL in `cx_data_service.py`. Production may use PostgreSQL with the SQLAlchemy models in `src/models/`.

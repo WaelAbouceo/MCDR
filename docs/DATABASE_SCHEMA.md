@@ -2,15 +2,16 @@
 
 ## Database Architecture
 
-The system uses **three separate databases** to enforce data-zone isolation:
+The system uses **four MySQL databases** to enforce data-zone isolation:
 
-| Database | File (POC) | Access Pattern | Purpose |
-|----------|-----------|---------------|---------|
-| **CX Database** | `mcdr_cx.db` | Read/Write | Operational CX data |
-| **Core Database** | `mcdr_core.db` | Read-Only (attached) | Investor profiles and holdings |
-| **Mobile Database** | `mcdr_mobile.db` | Read-Only | Mobile app users |
+| Database | MySQL Database | Access Pattern | Purpose |
+|----------|----------------|----------------|---------|
+| **CX Database** | `mcdr_cx` | Read/Write | Operational CX data |
+| **Core Database** | `mcdr_core` | Read-Only | Investor profiles and holdings |
+| **Mobile Database** | `mcdr_mobile` | Read-Only | Mobile app users |
+| **Customer Database** | `mcdr_customer` | Read-Only | Additional customer data zone |
 
-Cross-database queries use SQLite `ATTACH DATABASE` in the POC. In production (PostgreSQL), these would be separate schemas or databases with foreign data wrappers.
+Cross-database queries use MySQL database names (`mcdr_cx`, `mcdr_core`, `mcdr_mobile`, `mcdr_customer`). The application connects to each database via separate connection URLs.
 
 ---
 

@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+from datetime import datetime
+
+from pydantic import BaseModel, Field, field_serializer
 
 
 class RoleOut(BaseModel):
@@ -32,8 +34,14 @@ class UserOut(BaseModel):
     tier: str | None = None
     is_active: int | bool = True
     role: RoleOut
-    created_at: str | None = None
+    created_at: str | datetime | None = None
     model_config = {"from_attributes": True}
+
+    @field_serializer("created_at")
+    def serialize_created_at(self, v):
+        if isinstance(v, datetime):
+            return v.strftime("%Y-%m-%d %H:%M:%S")
+        return v
 
 
 class Token(BaseModel):

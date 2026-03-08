@@ -14,12 +14,19 @@ Generates:
   - QA evaluations with scores
 """
 
-import sqlite3
+import pymysql
+import pymysql.cursors
+import os
 import random
 from faker import Faker
 from datetime import datetime, timedelta
 
 fake = Faker("ar_EG")
+
+MYSQL_HOST = os.environ.get("MYSQL_HOST", "localhost")
+MYSQL_PORT = int(os.environ.get("MYSQL_PORT", "3306"))
+MYSQL_USER = os.environ.get("MYSQL_USER", "mcdr")
+MYSQL_PASSWORD = os.environ.get("MYSQL_PASSWORD", "mcdr_pass")
 
 # ─── Egyptian Name Pools ─────────────────────────────────────────
 # Mix of Arabic-script and Latin-transliterated Egyptian names
@@ -166,14 +173,22 @@ def ts_str(dt):
 
 print("Loading MCDR registry data...")
 
-core_conn = sqlite3.connect("mcdr_core.db")
-core_conn.row_factory = sqlite3.Row
-investors = [dict(r) for r in core_conn.execute("SELECT investor_id FROM investors WHERE account_status='Active' LIMIT 20000").fetchall()]
+core_conn = pymysql.connect(
+    host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD,
+    database="mcdr_core", cursorclass=pymysql.cursors.DictCursor,
+)
+core_cur = core_conn.cursor()
+core_cur.execute("SELECT investor_id FROM investors WHERE account_status='Active' LIMIT 20000")
+investors = [dict(r) for r in core_cur.fetchall()]
 core_conn.close()
 
-mobile_conn = sqlite3.connect("mcdr_mobile.db")
-mobile_conn.row_factory = sqlite3.Row
-app_users = [dict(r) for r in mobile_conn.execute("SELECT investor_id, mobile FROM app_users WHERE status='Active'").fetchall()]
+mobile_conn = pymysql.connect(
+    host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD,
+    database="mcdr_mobile", cursorclass=pymysql.cursors.DictCursor,
+)
+mobile_cur = mobile_conn.cursor()
+mobile_cur.execute("SELECT investor_id, mobile FROM app_users WHERE status='Active'")
+app_users = [dict(r) for r in mobile_cur.fetchall()]
 mobile_conn.close()
 
 investor_ids = [inv["investor_id"] for inv in investors]
@@ -183,259 +198,35 @@ print(f"  {len(investor_ids)} active investors, {len(caller_pool)} active app us
 
 # ─── Create CX Database ─────────────────────────────────────────
 
-print("Creating mcdr_cx.db...")
+print("Connecting to mcdr_cx...")
 
-cx = sqlite3.connect("mcdr_cx.db")
-c = cx.cursor()
+cx_conn = pymysql.connect(
+    host=MYSQL_HOST, port=MYSQL_PORT, user=MYSQL_USER, password=MYSQL_PASSWORD,
+    database="mcdr_cx", charset="utf8mb4",
+    connect_timeout=60,
+    read_timeout=300,
+    write_timeout=300,
+)
+c = cx_conn.cursor()
 
-c.executescript("""
-DROP TABLE IF EXISTS cx_users;
-DROP TABLE IF EXISTS calls;
-DROP TABLE IF EXISTS cti_events;
-DROP TABLE IF EXISTS case_taxonomy;
-DROP TABLE IF EXISTS sla_policies;
-DROP TABLE IF EXISTS verification_sessions;
-DROP TABLE IF EXISTS cases;
-DROP TABLE IF EXISTS case_notes;
-DROP TABLE IF EXISTS case_history;
-DROP TABLE IF EXISTS sla_breaches;
-DROP TABLE IF EXISTS escalation_rules;
-DROP TABLE IF EXISTS escalations;
-DROP TABLE IF EXISTS qa_scorecards;
-DROP TABLE IF EXISTS qa_evaluations;
-DROP TABLE IF EXISTS outbound_tasks;
-DROP TABLE IF EXISTS kb_articles;
-DROP TABLE IF EXISTS approvals;
-DROP TABLE IF EXISTS agent_presence;
+def batch_executemany(cursor, sql, rows, batch_size=2000):
+    """Insert in batches to avoid timeouts and max_allowed_packet."""
+    for i in range(0, len(rows), batch_size):
+        chunk = rows[i : i + batch_size]
+        cursor.executemany(sql, chunk)
 
--- CX Staff
-CREATE TABLE cx_users (
-    user_id INTEGER PRIMARY KEY,
-    username TEXT UNIQUE,
-    full_name TEXT,
-    email TEXT,
-    role TEXT,
-    tier TEXT,
-    is_active INTEGER DEFAULT 1,
-    created_at TEXT
-);
-
--- Call Records
-CREATE TABLE calls (
-    call_id INTEGER PRIMARY KEY,
-    ani TEXT,
-    dnis TEXT,
-    investor_id INTEGER,
-    queue TEXT,
-    ivr_path TEXT,
-    agent_id INTEGER,
-    status TEXT,
-    call_start TEXT,
-    call_end TEXT,
-    duration_seconds INTEGER,
-    wait_seconds INTEGER,
-    recording_url TEXT
-);
-
--- CTI Events
-CREATE TABLE cti_events (
-    event_id INTEGER PRIMARY KEY,
-    call_id INTEGER,
-    event_type TEXT,
-    timestamp TEXT,
-    payload TEXT
-);
-
--- Case Taxonomy
-CREATE TABLE case_taxonomy (
-    taxonomy_id INTEGER PRIMARY KEY,
-    category TEXT,
-    subcategory TEXT,
-    description TEXT,
-    is_active INTEGER DEFAULT 1
-);
-
--- SLA Policies
-CREATE TABLE sla_policies (
-    policy_id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE,
-    priority TEXT,
-    first_response_minutes INTEGER,
-    resolution_minutes INTEGER,
-    is_active INTEGER DEFAULT 1
-);
-
--- Verification Sessions
-CREATE TABLE verification_sessions (
-    verification_id INTEGER PRIMARY KEY,
-    investor_id INTEGER,
-    agent_id INTEGER,
-    call_id INTEGER,
-    method TEXT DEFAULT 'verbal',
-    status TEXT DEFAULT 'pending',
-    steps_completed TEXT DEFAULT '{}',
-    steps_required TEXT DEFAULT '["full_name","national_id","mobile_number","account_status"]',
-    failure_reason TEXT,
-    notes TEXT,
-    created_at TEXT,
-    verified_at TEXT,
-    expires_at TEXT
-);
-
--- Cases / Tickets
-CREATE TABLE cases (
-    case_id INTEGER PRIMARY KEY,
-    case_number TEXT UNIQUE,
-    call_id INTEGER,
-    investor_id INTEGER,
-    agent_id INTEGER,
-    taxonomy_id INTEGER,
-    verification_id INTEGER,
-    priority TEXT,
-    status TEXT,
-    subject TEXT,
-    description TEXT,
-    sla_policy_id INTEGER,
-    first_response_at TEXT,
-    resolved_at TEXT,
-    closed_at TEXT,
-    created_at TEXT,
-    updated_at TEXT,
-    pending_seconds INTEGER DEFAULT 0,
-    pending_since TEXT,
-    resolution_code TEXT
-);
-
--- Case Notes
-CREATE TABLE case_notes (
-    note_id INTEGER PRIMARY KEY,
-    case_id INTEGER,
-    author_id INTEGER,
-    content TEXT,
-    is_internal INTEGER DEFAULT 0,
-    created_at TEXT
-);
-
--- Case History (field-level audit)
-CREATE TABLE case_history (
-    history_id INTEGER PRIMARY KEY,
-    case_id INTEGER,
-    field_changed TEXT,
-    old_value TEXT,
-    new_value TEXT,
-    changed_by INTEGER,
-    changed_at TEXT
-);
-
--- SLA Breaches
-CREATE TABLE sla_breaches (
-    breach_id INTEGER PRIMARY KEY,
-    case_id INTEGER,
-    policy_id INTEGER,
-    breach_type TEXT,
-    breached_at TEXT
-);
-
--- Escalation Rules
-CREATE TABLE escalation_rules (
-    rule_id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE,
-    trigger_condition TEXT,
-    from_tier TEXT,
-    to_tier TEXT,
-    alert_channels TEXT,
-    is_active INTEGER DEFAULT 1
-);
-
--- Escalations
-CREATE TABLE escalations (
-    escalation_id INTEGER PRIMARY KEY,
-    case_id INTEGER,
-    rule_id INTEGER,
-    from_agent_id INTEGER,
-    to_agent_id INTEGER,
-    from_tier TEXT,
-    to_tier TEXT,
-    reason TEXT,
-    escalated_at TEXT
-);
-
--- QA Scorecards
-CREATE TABLE qa_scorecards (
-    scorecard_id INTEGER PRIMARY KEY,
-    name TEXT UNIQUE,
-    criteria TEXT,
-    max_score INTEGER DEFAULT 100,
-    is_active INTEGER DEFAULT 1
-);
-
--- QA Evaluations
-CREATE TABLE qa_evaluations (
-    evaluation_id INTEGER PRIMARY KEY,
-    case_id INTEGER,
-    call_id INTEGER,
-    evaluator_id INTEGER,
-    agent_id INTEGER,
-    scorecard_id INTEGER,
-    scores TEXT,
-    total_score REAL,
-    feedback TEXT,
-    evaluated_at TEXT
-);
-
--- Knowledge Base
-CREATE TABLE kb_articles (
-    article_id INTEGER PRIMARY KEY,
-    title TEXT,
-    category TEXT,
-    content TEXT,
-    tags TEXT,
-    author_id INTEGER,
-    is_published INTEGER DEFAULT 1,
-    created_at TEXT,
-    updated_at TEXT
-);
-
--- Approvals
-CREATE TABLE approvals (
-    approval_id INTEGER PRIMARY KEY,
-    case_id INTEGER,
-    requested_by INTEGER,
-    reviewed_by INTEGER,
-    approval_type TEXT,
-    amount REAL,
-    description TEXT,
-    status TEXT DEFAULT 'pending',
-    reviewer_notes TEXT,
-    requested_at TEXT,
-    reviewed_at TEXT
-);
-
--- Agent Presence
-CREATE TABLE agent_presence (
-    agent_id INTEGER PRIMARY KEY,
-    status TEXT DEFAULT 'offline',
-    updated_at TEXT
-);
-
--- Outbound Tasks
-CREATE TABLE outbound_tasks (
-    task_id INTEGER PRIMARY KEY,
-    task_type TEXT,
-    investor_id INTEGER,
-    agent_id INTEGER,
-    case_id INTEGER,
-    status TEXT DEFAULT 'pending',
-    priority TEXT DEFAULT 'medium',
-    notes TEXT,
-    outcome TEXT,
-    scheduled_at TEXT,
-    attempted_at TEXT,
-    completed_at TEXT,
-    created_at TEXT,
-    updated_at TEXT
-);
-""")
+print("Clearing existing data...")
+c.execute("SET FOREIGN_KEY_CHECKS = 0")
+for table in [
+    "qa_evaluations", "qa_scorecards", "escalations", "escalation_rules",
+    "sla_breaches", "case_history", "case_notes", "cases",
+    "verification_sessions", "sla_policies", "case_taxonomy",
+    "cti_events", "calls", "cx_users", "outbound_tasks",
+    "kb_articles", "approvals", "agent_presence",
+]:
+    c.execute(f"DELETE FROM {table}")
+c.execute("SET FOREIGN_KEY_CHECKS = 1")
+cx_conn.commit()
 
 # ─── 1. CX Staff ────────────────────────────────────────────────
 
@@ -448,11 +239,13 @@ supervisor_ids = []
 qa_ids = []
 t2_agent_ids = []
 
+cx_users_rows = []
+
 for i in range(AGENT_COUNT):
     tier = "tier2" if i < 10 else "tier1"
     role = "senior_agent" if tier == "tier2" else "agent"
     name, email_pfx = _egyptian_name()
-    c.execute("INSERT INTO cx_users VALUES (?,?,?,?,?,?,?,?)", (
+    cx_users_rows.append((
         user_id, f"agent{i+1}", name, _egyptian_staff_email(email_pfx),
         role, tier, 1, ts_str(random_ts(900))
     ))
@@ -463,7 +256,7 @@ for i in range(AGENT_COUNT):
 
 for i in range(TEAM_LEAD_COUNT):
     name, email_pfx = _egyptian_name(arabic_ratio=0.5)
-    c.execute("INSERT INTO cx_users VALUES (?,?,?,?,?,?,?,?)", (
+    cx_users_rows.append((
         user_id, f"tl{i+1}", name, _egyptian_staff_email(email_pfx),
         "team_lead", "tier2", 1, ts_str(random_ts(900))
     ))
@@ -472,7 +265,7 @@ for i in range(TEAM_LEAD_COUNT):
 
 for i in range(SUPERVISOR_COUNT):
     name, email_pfx = _egyptian_name(arabic_ratio=0.5)
-    c.execute("INSERT INTO cx_users VALUES (?,?,?,?,?,?,?,?)", (
+    cx_users_rows.append((
         user_id, f"supervisor{i+1}", name, _egyptian_staff_email(email_pfx),
         "supervisor", "tier2", 1, ts_str(random_ts(900))
     ))
@@ -481,7 +274,7 @@ for i in range(SUPERVISOR_COUNT):
 
 for i in range(QA_COUNT):
     name, email_pfx = _egyptian_name(arabic_ratio=0.5)
-    c.execute("INSERT INTO cx_users VALUES (?,?,?,?,?,?,?,?)", (
+    cx_users_rows.append((
         user_id, f"qa{i+1}", name, _egyptian_staff_email(email_pfx),
         "qa_analyst", "tier2", 1, ts_str(random_ts(900))
     ))
@@ -490,11 +283,16 @@ for i in range(QA_COUNT):
 
 for i in range(ADMIN_COUNT):
     name, email_pfx = _egyptian_name(arabic_ratio=0.4)
-    c.execute("INSERT INTO cx_users VALUES (?,?,?,?,?,?,?,?)", (
+    cx_users_rows.append((
         user_id, f"admin{i+1}", name, _egyptian_staff_email(email_pfx),
         "admin", "tier2", 1, ts_str(random_ts(900))
     ))
     user_id += 1
+
+c.executemany(
+    "INSERT INTO cx_users VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+    cx_users_rows,
+)
 
 t1_agent_ids = [aid for aid in agent_ids if aid not in t2_agent_ids]
 all_staff = agent_ids + supervisor_ids
@@ -505,40 +303,58 @@ print("Inserting reference data...")
 
 tax_id = 1
 taxonomy_ids = []
+taxonomy_rows = []
 for cat, subs in CATEGORIES.items():
     for sub in subs:
-        c.execute("INSERT INTO case_taxonomy VALUES (?,?,?,?,?)", (
-            tax_id, cat, sub, f"{cat} — {sub}", 1
-        ))
+        taxonomy_rows.append((tax_id, cat, sub, f"{cat} — {sub}", 1))
         taxonomy_ids.append(tax_id)
         tax_id += 1
 
+c.executemany(
+    "INSERT INTO case_taxonomy VALUES (%s,%s,%s,%s,%s)",
+    taxonomy_rows,
+)
+
 pol_id = 1
 policy_map = {}
+sla_rows = []
 for priority, times in SLA_POLICIES.items():
-    c.execute("INSERT INTO sla_policies VALUES (?,?,?,?,?,?)", (
+    sla_rows.append((
         pol_id, f"{priority.title()} SLA", priority, times["frt"], times["rt"], 1
     ))
     policy_map[priority] = pol_id
     pol_id += 1
 
-c.execute("INSERT INTO escalation_rules VALUES (?,?,?,?,?,?,?)",
-          (1, "T1→T2 SLA breach", "sla_breach", "tier1", "tier2", "email,slack", 1))
-c.execute("INSERT INTO escalation_rules VALUES (?,?,?,?,?,?,?)",
-          (2, "T1→T2 Critical", "priority=critical", "tier1", "tier2", "email,slack,sms", 1))
-c.execute("INSERT INTO escalation_rules VALUES (?,?,?,?,?,?,?)",
-          (3, "T1→T2 Manual", "manual", "tier1", "tier2", "email", 1))
+c.executemany(
+    "INSERT INTO sla_policies VALUES (%s,%s,%s,%s,%s,%s)",
+    sla_rows,
+)
 
-c.execute("INSERT INTO qa_scorecards VALUES (?,?,?,?,?)",
-          (1, "Standard Voice QA", ",".join(QA_CRITERIA), 100, 1))
-c.execute("INSERT INTO qa_scorecards VALUES (?,?,?,?,?)",
-          (2, "Escalation Review", "identification,resolution,compliance,documentation", 100, 1))
+esc_rule_rows = [
+    (1, "T1→T2 SLA breach", "sla_breach", "tier1", "tier2", "email,slack", 1),
+    (2, "T1→T2 Critical", "priority=critical", "tier1", "tier2", "email,slack,sms", 1),
+    (3, "T1→T2 Manual", "manual", "tier1", "tier2", "email", 1),
+]
+c.executemany(
+    "INSERT INTO escalation_rules VALUES (%s,%s,%s,%s,%s,%s,%s)",
+    esc_rule_rows,
+)
+
+scorecard_rows = [
+    (1, "Standard Voice QA", ",".join(QA_CRITERIA), 100, 1),
+    (2, "Escalation Review", "identification,resolution,compliance,documentation", 100, 1),
+]
+c.executemany(
+    "INSERT INTO qa_scorecards VALUES (%s,%s,%s,%s,%s)",
+    scorecard_rows,
+)
 
 # ─── 3. Call Records ────────────────────────────────────────────
 
 print(f"Generating {CALL_COUNT:,} call records...")
 
 call_data = []
+call_rows = []
 for call_id in range(1, CALL_COUNT + 1):
     caller = random.choice(caller_pool)
     investor_id = caller[0]
@@ -561,7 +377,7 @@ for call_id in range(1, CALL_COUNT + 1):
 
     call_end = call_ts + timedelta(seconds=duration + wait)
 
-    c.execute("INSERT INTO calls VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+    call_rows.append((
         call_id, ani, "+20221234567", investor_id,
         random.choice(queues), random.choice(ivr_paths),
         agent_id, status,
@@ -574,11 +390,18 @@ for call_id in range(1, CALL_COUNT + 1):
         "agent_id": agent_id, "ts": call_ts, "status": status, "ani": ani
     })
 
+batch_executemany(
+    c,
+    "INSERT INTO calls VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+    call_rows,
+)
+
 # ─── 4. CTI Events ──────────────────────────────────────────────
 
 print("Generating CTI events...")
 
 event_id = 1
+cti_rows = []
 for call in call_data[:15000]:
     events = ["call_offered", "call_answered"]
     if random.random() < 0.2:
@@ -588,11 +411,17 @@ for call in call_data[:15000]:
 
     t = call["ts"]
     for evt in events:
-        c.execute("INSERT INTO cti_events VALUES (?,?,?,?,?)", (
+        cti_rows.append((
             event_id, call["call_id"], evt, ts_str(t), None
         ))
         t += timedelta(seconds=random.randint(5, 120))
         event_id += 1
+
+batch_executemany(
+    c,
+    "INSERT INTO cti_events VALUES (%s,%s,%s,%s,%s)",
+    cti_rows,
+)
 
 # ─── 5. Verification Sessions & Cases ──────────────────────────
 
@@ -617,6 +446,8 @@ call_assignment_idx = 0
 
 case_data = []
 verification_id = 1
+verification_rows = []
+case_rows = []
 for case_id in range(1, CASE_COUNT + 1):
     if random.random() < 0.85 and call_assignment_idx < len(available_calls):
         call = call_data[available_calls[call_assignment_idx]]
@@ -697,16 +528,15 @@ for case_id in range(1, CASE_COUNT + 1):
         "Caller refused to verify identity",
     ]) if v_status == "failed" else None
 
-    c.execute(
-        "INSERT INTO verification_sessions VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (verification_id, investor_id, agent_id,
-         call["call_id"] if call else None,
-         v_method, v_status,
-         json.dumps(steps_completed),
-         json.dumps(VERIFICATION_STEPS),
-         v_failure_reason, None,
-         ts_str(v_created), v_verified, v_expires),
-    )
+    verification_rows.append((
+        verification_id, investor_id, agent_id,
+        call["call_id"] if call else None,
+        v_method, v_status,
+        json.dumps(steps_completed),
+        json.dumps(VERIFICATION_STEPS),
+        v_failure_reason, None,
+        ts_str(v_created), v_verified, v_expires,
+    ))
 
     cur_verification_id = verification_id if v_status == "verified" else None
     verification_id += 1
@@ -717,7 +547,7 @@ for case_id in range(1, CASE_COUNT + 1):
     if status in ("resolved", "closed", "in_progress", "escalated") and random.random() < 0.25:
         pending_seconds = random.randint(600, 86400)
 
-    c.execute("INSERT INTO cases VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", (
+    case_rows.append((
         case_id, f"CAS-{case_id:06}", call["call_id"] if call else None,
         investor_id, agent_id, taxonomy_id, cur_verification_id,
         priority, status, subject,
@@ -732,6 +562,17 @@ for case_id in range(1, CASE_COUNT + 1):
         "frt_at": frt_at, "resolved_at": resolved_at, "sla_policy_id": sla_policy_id,
         "call_id": call["call_id"] if call else None,
     })
+
+batch_executemany(
+    c,
+    "INSERT INTO verification_sessions VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+    verification_rows,
+)
+batch_executemany(
+    c,
+    "INSERT INTO cases VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+    case_rows,
+)
 
 # ─── 6. Case Notes ──────────────────────────────────────────────
 
@@ -767,11 +608,12 @@ note_templates = {
     ],
 }
 
+note_rows = []
 for case in case_data:
     note_count = random.randint(1, 6)
     t = case["created_at"]
 
-    c.execute("INSERT INTO case_notes VALUES (?,?,?,?,?,?)", (
+    note_rows.append((
         note_id, case["case_id"], case["agent_id"],
         random.choice(note_templates["initial"]).format(subject="their issue", tier="retail"),
         0, ts_str(t)
@@ -787,7 +629,7 @@ for case in case_data:
         else:
             author = case["agent_id"]
 
-        c.execute("INSERT INTO case_notes VALUES (?,?,?,?,?,?)", (
+        note_rows.append((
             note_id, case["case_id"], author,
             random.choice(note_templates[template_key]),
             1 if is_internal else 0,
@@ -795,6 +637,12 @@ for case in case_data:
         ))
         note_id += 1
         t += timedelta(minutes=random.randint(10, 480))
+
+batch_executemany(
+    c,
+    "INSERT INTO case_notes VALUES (%s,%s,%s,%s,%s,%s)",
+    note_rows,
+)
 
 # ─── 7. Case History ────────────────────────────────────────────
 # Build a coherent transition chain that ends at the case's final status.
@@ -816,7 +664,6 @@ _STATUS_CHAINS_VIA_ESC = {
     "closed":    [("open", "in_progress"), ("in_progress", "escalated"), ("escalated", "in_progress"), ("in_progress", "resolved"), ("resolved", "closed")],
 }
 
-# Mark ~15% of resolved/closed cases as having gone through escalation
 escalated_then_resolved = set()
 for case in case_data:
     if case["status"] in ("resolved", "closed") and random.random() < 0.15:
@@ -828,6 +675,7 @@ def _get_chain(case):
     return _STATUS_CHAINS_DIRECT.get(case["status"], [])
 
 history_id = 1
+history_rows = []
 for case in case_data:
     t = case["created_at"] + timedelta(minutes=random.randint(1, 30))
     chain = _get_chain(case)
@@ -836,7 +684,7 @@ for case in case_data:
         changed_by = case["agent_id"]
         if new_val == "escalated":
             changed_by = random.choice(supervisor_ids + [case["agent_id"]])
-        c.execute("INSERT INTO case_history VALUES (?,?,?,?,?,?,?)", (
+        history_rows.append((
             history_id, case["case_id"], "status", old_val, new_val,
             changed_by, ts_str(t)
         ))
@@ -845,24 +693,31 @@ for case in case_data:
 
     if random.random() < 0.3:
         old_p = random.choice(PRIORITIES)
-        c.execute("INSERT INTO case_history VALUES (?,?,?,?,?,?,?)", (
+        history_rows.append((
             history_id, case["case_id"], "priority", old_p, case["priority"],
             random.choice(supervisor_ids), ts_str(t + timedelta(minutes=random.randint(5, 60)))
         ))
         history_id += 1
+
+batch_executemany(
+    c,
+    "INSERT INTO case_history VALUES (%s,%s,%s,%s,%s,%s,%s)",
+    history_rows,
+)
 
 # ─── 8. SLA Breaches ────────────────────────────────────────────
 
 print("Generating SLA breaches...")
 
 breach_id = 1
+breach_rows = []
 for case in case_data:
     sla = SLA_POLICIES[case["priority"]]
 
     if case["frt_at"]:
         frt_delta = (datetime.strptime(case["frt_at"], "%Y-%m-%d %H:%M:%S") - case["created_at"]).total_seconds() / 60
         if frt_delta > sla["frt"]:
-            c.execute("INSERT INTO sla_breaches VALUES (?,?,?,?,?)", (
+            breach_rows.append((
                 breach_id, case["case_id"], case["sla_policy_id"],
                 "first_response", case["frt_at"]
             ))
@@ -871,11 +726,17 @@ for case in case_data:
     if case["resolved_at"]:
         rt_delta = (datetime.strptime(case["resolved_at"], "%Y-%m-%d %H:%M:%S") - case["created_at"]).total_seconds() / 60
         if rt_delta > sla["rt"]:
-            c.execute("INSERT INTO sla_breaches VALUES (?,?,?,?,?)", (
+            breach_rows.append((
                 breach_id, case["case_id"], case["sla_policy_id"],
                 "resolution", case["resolved_at"]
             ))
             breach_id += 1
+
+batch_executemany(
+    c,
+    "INSERT INTO sla_breaches VALUES (%s,%s,%s,%s,%s)",
+    breach_rows,
+)
 
 # ─── 9. Escalations ─────────────────────────────────────────────
 # Only create escalation records for cases that actually went through escalated status:
@@ -885,6 +746,8 @@ for case in case_data:
 print("Generating escalations...")
 
 esc_id = 1
+escalation_rows = []
+agent_reassign_rows = []
 escalation_eligible = [
     case for case in case_data
     if case["status"] == "escalated" or case["case_id"] in escalated_then_resolved
@@ -906,7 +769,7 @@ for case in escalation_eligible:
         "Multiple related complaints on same issue",
     ]
 
-    c.execute("INSERT INTO escalations VALUES (?,?,?,?,?,?,?,?,?)", (
+    escalation_rows.append((
         esc_id, case["case_id"], rule_id, from_agent, to_agent,
         "tier1", "tier2", random.choice(reasons),
         ts_str(case["created_at"] + timedelta(minutes=random.randint(15, 240)))
@@ -914,14 +777,27 @@ for case in escalation_eligible:
     esc_id += 1
 
     if case["status"] in ("resolved", "closed", "in_progress"):
-        c.execute("UPDATE cases SET agent_id = ? WHERE case_id = ?", (to_agent, case["case_id"]))
+        agent_reassign_rows.append((to_agent, case["case_id"]))
         case["agent_id"] = to_agent
+
+batch_executemany(
+    c,
+    "INSERT INTO escalations VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+    escalation_rows,
+)
+if agent_reassign_rows:
+    batch_executemany(
+        c,
+        "UPDATE cases SET agent_id = %s WHERE case_id = %s",
+        agent_reassign_rows,
+    )
 
 # ─── 10. QA Evaluations ─────────────────────────────────────────
 
 print("Generating QA evaluations...")
 
 eval_id = 1
+qa_rows = []
 sampled = random.sample(case_data, min(6000, len(case_data)))
 for case in sampled:
     evaluator = random.choice(qa_ids)
@@ -943,7 +819,7 @@ for case in sampled:
         "Adequate performance. Follow-up on closing procedure.",
     ]
 
-    c.execute("INSERT INTO qa_evaluations VALUES (?,?,?,?,?,?,?,?,?,?)", (
+    qa_rows.append((
         eval_id, case["case_id"], case["call_id"],
         evaluator, case["agent_id"], scorecard_id,
         str(criteria_scores), normalized,
@@ -951,6 +827,12 @@ for case in sampled:
         ts_str(case["created_at"] + timedelta(days=random.randint(1, 14)))
     ))
     eval_id += 1
+
+batch_executemany(
+    c,
+    "INSERT INTO qa_evaluations VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+    qa_rows,
+)
 
 # ─── 8. Outbound Tasks ──────────────────────────────────────────
 
@@ -997,6 +879,7 @@ OUTBOUND_OUTCOMES = [
 NUM_OUTBOUND = 400
 outbound_agent_pool = [a for a in agent_ids[:8]]
 task_id = 1
+outbound_rows = []
 
 for _ in range(NUM_OUTBOUND):
     task_type = random.choice(OUTBOUND_TYPES)
@@ -1034,18 +917,23 @@ for _ in range(NUM_OUTBOUND):
         completed_at = None
         outcome_text = None
 
-    c.execute(
-        "INSERT INTO outbound_tasks VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        (task_id, task_type, investor_id, agent_id, case_id,
-         status, priority,
-         random.choice(OUTBOUND_NOTES[task_type]),
-         outcome_text,
-         ts_str(scheduled),
-         ts_str(attempted) if attempted else None,
-         ts_str(completed_at) if completed_at else None,
-         ts_str(created), ts_str(created)),
-    )
+    outbound_rows.append((
+        task_id, task_type, investor_id, agent_id, case_id,
+        status, priority,
+        random.choice(OUTBOUND_NOTES[task_type]),
+        outcome_text,
+        ts_str(scheduled),
+        ts_str(attempted) if attempted else None,
+        ts_str(completed_at) if completed_at else None,
+        ts_str(created), ts_str(created),
+    ))
     task_id += 1
+
+batch_executemany(
+    c,
+    "INSERT INTO outbound_tasks VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+    outbound_rows,
+)
 
 print(f"  → {NUM_OUTBOUND} outbound tasks")
 
@@ -1071,13 +959,19 @@ KB_ARTICLES = [
 ]
 
 article_id = 1
+kb_rows = []
 for title, category, content, tags in KB_ARTICLES:
-    c.execute("INSERT INTO kb_articles VALUES (?,?,?,?,?,?,?,?,?)", (
+    kb_rows.append((
         article_id, title, category, content, tags,
         random.choice(supervisor_ids),
         1, ts_str(random_ts(365)), ts_str(random_ts(90))
     ))
     article_id += 1
+
+c.executemany(
+    "INSERT INTO kb_articles VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+    kb_rows,
+)
 
 print(f"  → {article_id - 1} knowledge base articles")
 
@@ -1117,9 +1011,10 @@ REVIEWER_NOTES = [
 ]
 
 approval_id = 1
-resolved_cases = [c for c in case_data if c["status"] in ("resolved", "closed")]
+resolved_cases = [cs for cs in case_data if cs["status"] in ("resolved", "closed")]
 approval_sample = random.sample(resolved_cases, min(300, len(resolved_cases)))
 
+approval_rows = []
 for case in approval_sample:
     atype = random.choice(APPROVAL_TYPES)
     amount = round(random.uniform(50, 5000), 2) if atype in ("refund", "fee_waiver") else None
@@ -1145,12 +1040,18 @@ for case in approval_sample:
         reviewed_at = None
         notes = None
 
-    c.execute("INSERT INTO approvals VALUES (?,?,?,?,?,?,?,?,?,?,?)", (
+    approval_rows.append((
         approval_id, case["case_id"], requested_by, reviewed_by,
         atype, amount, desc, status, notes,
         ts_str(requested_at), reviewed_at,
     ))
     approval_id += 1
+
+batch_executemany(
+    c,
+    "INSERT INTO approvals VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+    approval_rows,
+)
 
 print(f"  → {approval_id - 1} approval requests")
 
@@ -1161,48 +1062,34 @@ PRESENCE_STATUSES = ["available", "available", "available", "available",
                      "training", "offline"]
 
 now_str = ts_str(datetime.now())
+presence_rows = []
+seen_agent_ids = set()
 for aid in agent_ids + t2_agent_ids:
-    status = random.choice(PRESENCE_STATUSES)
-    c.execute("INSERT OR IGNORE INTO agent_presence VALUES (?,?,?)", (aid, status, now_str))
+    if aid not in seen_agent_ids:
+        status = random.choice(PRESENCE_STATUSES)
+        presence_rows.append((aid, status, now_str))
+        seen_agent_ids.add(aid)
 
 for tlid in team_lead_ids:
-    c.execute("INSERT OR IGNORE INTO agent_presence VALUES (?,?,?)", (tlid, "available", now_str))
+    if tlid not in seen_agent_ids:
+        presence_rows.append((tlid, "available", now_str))
+        seen_agent_ids.add(tlid)
 
 for sid in supervisor_ids:
-    c.execute("INSERT OR IGNORE INTO agent_presence VALUES (?,?,?)", (sid, "available", now_str))
+    if sid not in seen_agent_ids:
+        presence_rows.append((sid, "available", now_str))
+        seen_agent_ids.add(sid)
 
-# ─── Indexes & Commit ───────────────────────────────────────────
+batch_executemany(
+    c,
+    "INSERT IGNORE INTO agent_presence VALUES (%s,%s,%s)",
+    presence_rows,
+)
 
-print("Creating indexes...")
+# ─── Commit ──────────────────────────────────────────────────────
 
-c.executescript("""
-CREATE INDEX idx_calls_investor ON calls(investor_id);
-CREATE INDEX idx_calls_agent ON calls(agent_id);
-CREATE INDEX idx_calls_ani ON calls(ani);
-CREATE INDEX idx_calls_status ON calls(status);
-CREATE INDEX idx_verif_investor ON verification_sessions(investor_id);
-CREATE INDEX idx_verif_agent ON verification_sessions(agent_id);
-CREATE INDEX idx_verif_status ON verification_sessions(status);
-CREATE INDEX idx_cases_investor ON cases(investor_id);
-CREATE INDEX idx_cases_agent ON cases(agent_id);
-CREATE INDEX idx_cases_status ON cases(status);
-CREATE INDEX idx_cases_priority ON cases(priority);
-CREATE INDEX idx_cases_call ON cases(call_id);
-CREATE INDEX idx_cases_verif ON cases(verification_id);
-CREATE INDEX idx_notes_case ON case_notes(case_id);
-CREATE INDEX idx_history_case ON case_history(case_id);
-CREATE INDEX idx_breaches_case ON sla_breaches(case_id);
-CREATE INDEX idx_escalations_case ON escalations(case_id);
-CREATE INDEX idx_qa_agent ON qa_evaluations(agent_id);
-CREATE INDEX idx_qa_case ON qa_evaluations(case_id);
-CREATE INDEX idx_outbound_status ON outbound_tasks(status);
-CREATE INDEX idx_outbound_type ON outbound_tasks(task_type);
-CREATE INDEX idx_outbound_agent ON outbound_tasks(agent_id);
-CREATE INDEX idx_outbound_investor ON outbound_tasks(investor_id);
-""")
-
-cx.commit()
-cx.close()
+cx_conn.commit()
+cx_conn.close()
 
 print(f"""
 ✅ CX Intelligent Layer Generated Successfully!

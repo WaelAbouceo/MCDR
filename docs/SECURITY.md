@@ -226,7 +226,7 @@ Full stack traces are logged server-side only.
 | **JWT secrets** | Environment variable | `SECRET_KEY` validated ≥ 32 chars in production. Default POC key rejected. |
 | **Audit log sanitization** | Deep recursive scrubbing | 30+ sensitive field names (`password`, `access_token`, `credit_card`, `ssn`, `national_id`, `otp`, `api_key`, etc.) masked as `***` at any nesting level up to 5 deep. |
 | **Token storage (frontend)** | `sessionStorage` | Token cleared when browser tab/window closes. Not persisted across sessions (unlike `localStorage`). |
-| **Database (POC)** | SQLite on local disk | No encryption at rest (acceptable for POC). |
+| **Database (POC)** | MySQL in Docker | No encryption at rest (acceptable for POC). |
 | **Database (Production)** | PostgreSQL with SSL | `DATABASE_SSL` env var supports `require` and `verify-full` modes. `pool_pre_ping=True` detects stale connections. |
 | **API responses** | Schema-level exclusion | `hashed_password` never returned. Customer fields masked per role (see Field Masking section). |
 
@@ -318,7 +318,7 @@ These items are not enforced in application code and must be configured during d
 - [ ] Configure `CORS_ORIGINS` for production frontend domain only
 - [ ] Use HTTPS with TLS 1.2+ at reverse proxy
 - [ ] Verify HSTS header is present (`curl -I https://your-domain/health`)
-- [ ] Use PostgreSQL instead of SQLite
+- [ ] Use MySQL (via Docker) or PostgreSQL for production
 - [ ] Review and restrict database user permissions (read-only for customer DB)
 - [ ] Set `LOG_LEVEL=WARNING`
 - [ ] Verify `/health/ready` returns 200 with all checks passing

@@ -7,7 +7,7 @@ COPY frontend/ .
 RUN npm run build && test -f /build/dist/index.html || (echo "Frontend build failed: no index.html" && exit 1)
 RUN cp -r public/. dist/ 2>/dev/null || true
 
-# ── Stage 2: Python API (dev / POC with SQLite) ─────────────
+# ── Stage 2: Python API (dev with MySQL) ─────────────────────
 FROM python:3.12-slim AS runtime
 
 WORKDIR /app
@@ -27,7 +27,7 @@ RUN test -f /app/frontend/dist/index.html || (echo "Frontend not in image" && ex
 
 EXPOSE 8100
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8100/health')" || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

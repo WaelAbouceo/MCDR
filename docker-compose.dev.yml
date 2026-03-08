@@ -1,17 +1,77 @@
 version: "3.9"
 
 services:
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-mcdr_root_pass}
+      MYSQL_USER: ${MYSQL_USER:-mcdr}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-mcdr_pass}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./db/00_grants.sh:/docker-entrypoint-initdb.d/00_grants.sh
+      - ./db/init_core.sql:/docker-entrypoint-initdb.d/01_init_core.sql
+      - ./db/init_mobile.sql:/docker-entrypoint-initdb.d/02_init_mobile.sql
+      - ./db/init_cx.sql:/docker-entrypoint-initdb.d/03_init_cx.sql
+      - ./db/init_customer.sql:/docker-entrypoint-initdb.d/04_init_customer.sql
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "sh", "-c", "mysqladmin ping -h localhost -u root -p\"$${MYSQL_ROOT_PASSWORD:-mcdr_root_pass}\""]
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 45s
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_ARBITRARY: 0
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
   app:
     build:
       context: .
       dockerfile: Dockerfile.dev
     ports:
       - "8100:8100"
-    volumes:
-      - mcdr_mock_data:/app/mcdr_mock
     environment:
       - ENVIRONMENT=development
-      - CORS_ORIGINS=http://localhost:8100,http://127.0.0.1:8100
+      - DATABASE_URL=mysql+aiomysql://${MYSQL_USER:-mcdr}:${MYSQL_PASSWORD:-mcdr_pass}@mysql:3306/mcdr_cx
+      - CUSTOMER_DB_URL=mysql+aiomysql://${MYSQL_USER:-mcdr}:${MYSQL_PASSWORD:-mcdr_pass}@mysql:3306/mcdr_customer
+      - MCDR_CORE_DB_URL=mysql+pymysql://${MYSQL_USER:-mcdr}:${MYSQL_PASSWORD:-mcdr_pass}@mysql:3306/mcdr_core
+      - MCDR_MOBILE_DB_URL=mysql+pymysql://${MYSQL_USER:-mcdr}:${MYSQL_PASSWORD:-mcdr_pass}@mysql:3306/mcdr_mobile
+      - MCDR_CX_DB_URL=mysql+pymysql://${MYSQL_USER:-mcdr}:${MYSQL_PASSWORD:-mcdr_pass}@mysql:3306/mcdr_cx
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=http://localhost:8100,http://127.0.0.1:8100,http://localhost:8080
+      - MYSQL_HOST=mysql
+      - MYSQL_PORT=3306
+      - MYSQL_USER=${MYSQL_USER:-mcdr}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-mcdr_pass}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
-  mcdr_mock_data:
+  mysql_data:

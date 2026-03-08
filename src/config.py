@@ -1,5 +1,6 @@
 import logging
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings
 
@@ -10,8 +11,8 @@ _POC_SECRET = "poc-secret-key-change-in-production"
 class Settings(BaseSettings):
     environment: str = "development"  # development | staging | production
 
-    database_url: str = "sqlite+aiosqlite:///./mcdr_mock/mcdr_cx.db"
-    customer_db_url: str = "sqlite+aiosqlite:///./mcdr_mock/mcdr_cx.db"
+    database_url: str = "mysql+aiomysql://mcdr:mcdr_pass@localhost:3306/mcdr_cx"
+    customer_db_url: str = "mysql+aiomysql://mcdr:mcdr_pass@localhost:3306/mcdr_customer"
 
     secret_key: str = _POC_SECRET
     algorithm: str = "HS256"
@@ -25,9 +26,9 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     log_level: str = "INFO"
 
-    mcdr_core_db_path: str = "mcdr_mock/mcdr_core.db"
-    mcdr_mobile_db_path: str = "mcdr_mock/mcdr_mobile.db"
-    mcdr_cx_db_path: str = "mcdr_mock/mcdr_cx.db"
+    mcdr_core_db_url: str = "mysql+pymysql://mcdr:mcdr_pass@localhost:3306/mcdr_core"
+    mcdr_mobile_db_url: str = "mysql+pymysql://mcdr:mcdr_pass@localhost:3306/mcdr_mobile"
+    mcdr_cx_db_url: str = "mysql+pymysql://mcdr:mcdr_pass@localhost:3306/mcdr_cx"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
@@ -38,6 +39,42 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment == "production"
+
+    def _parse_mysql_params(self, url: str) -> dict:
+        """Extract host/port/user/password/db from a SQLAlchemy-style MySQL URL."""
+        clean = url.replace("mysql+pymysql://", "mysql://").replace("mysql+aiomysql://", "mysql://")
+        parsed = urlparse(clean)
+        return {
+            "host": parsed.hostname or "localhost",
+            "port": parsed.port or 3306,
+            "user": parsed.username or "mcdr",
+            "password": parsed.password or "",
+            "database": parsed.path.lstrip("/") if parsed.path else "",
+        }
+
+    @property
+    def core_db_params(self) -> dict:
+        return self._parse_mysql_params(self.mcdr_core_db_url)
+
+    @property
+    def mobile_db_params(self) -> dict:
+        return self._parse_mysql_params(self.mcdr_mobile_db_url)
+
+    @property
+    def cx_db_params(self) -> dict:
+        return self._parse_mysql_params(self.mcdr_cx_db_url)
+
+    @property
+    def core_db_name(self) -> str:
+        return self.core_db_params["database"]
+
+    @property
+    def mobile_db_name(self) -> str:
+        return self.mobile_db_params["database"]
+
+    @property
+    def cx_db_name(self) -> str:
+        return self.cx_db_params["database"]
 
     def validate_for_production(self) -> None:
         logger = logging.getLogger("mcdr")

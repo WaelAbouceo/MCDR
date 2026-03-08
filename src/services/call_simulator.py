@@ -1,19 +1,21 @@
 """Simulates an incoming call from Cisco IVR/ACD.
 
 Replicates the real CTI flow:
-  1. Cisco IVR receives call → captures ANI
-  2. ACD routes to queue → assigns agent
+  1. Cisco IVR receives call -> captures ANI
+  2. ACD routes to queue -> assigns agent
   3. CTI adapter fires call_offered event
-  4. System resolves ANI → investor profile
-  5. Screen-pop assembled → pushed to agent console
+  4. System resolves ANI -> investor profile
+  5. Screen-pop assembled -> pushed to agent console
 """
 
-import sqlite3
 import random
 import threading
-from datetime import datetime, timezone
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import Generator
+
+import pymysql
+import pymysql.cursors
 
 from src.config import get_settings
 
@@ -44,11 +46,16 @@ def dismiss_incoming_call(agent_id: int) -> None:
 
 
 @contextmanager
-def _ro_conn(path: str) -> Generator[sqlite3.Connection, None, None]:
-    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
+def _ro_cursor(db_params: dict) -> Generator[pymysql.cursors.DictCursor, None, None]:
+    conn = pymysql.connect(
+        **db_params,
+        cursorclass=pymysql.cursors.DictCursor,
+        connect_timeout=10,
+        read_timeout=30,
+    )
     try:
-        yield conn
+        cursor = conn.cursor()
+        yield cursor
     finally:
         conn.close()
 
@@ -68,7 +75,7 @@ def simulate_incoming_call(
     now = datetime.now(timezone.utc)
     timestamp = now.strftime("%Y-%m-%d %H:%M:%S")
 
-    # ── Step 1: Resolve caller ANI ───────────────────────────────
+    # -- Step 1: Resolve caller ANI
     if ani:
         caller = _lookup_by_ani(ani)
     else:
@@ -79,7 +86,7 @@ def simulate_incoming_call(
     dnis = "+20221234567"
     call_queue = queue or random.choice(["billing", "technical", "general", "priority", "retention"])
 
-    # ── Step 2: Cisco IVR / ACD event ────────────────────────────
+    # -- Step 2: Cisco IVR / ACD event
     ivr_event = {
         "source": "cisco_ivr",
         "event": "call_received",
@@ -90,7 +97,7 @@ def simulate_incoming_call(
         "queue_selected": call_queue,
     }
 
-    # ── Step 3: Agent assignment (ACD) ───────────────────────────
+    # -- Step 3: Agent assignment (ACD)
     agent = _get_agent_by_id(target_agent_id) if target_agent_id else _pick_available_agent(call_queue)
 
     acd_event = {
@@ -103,7 +110,7 @@ def simulate_incoming_call(
         "wait_seconds": random.randint(5, 60),
     }
 
-    # ── Step 4: CTI call_offered event ───────────────────────────
+    # -- Step 4: CTI call_offered event
     call_id = random.randint(100000, 999999)
 
     cti_event = {
@@ -118,7 +125,7 @@ def simulate_incoming_call(
         "ivr_path": ivr_selections,
     }
 
-    # ── Step 5: ANI Resolution → Customer lookup ─────────────────
+    # -- Step 5: ANI Resolution -> Customer lookup
     ani_resolution = {"ani": ani, "matched": False}
     investor = None
     app_user = None
@@ -136,12 +143,12 @@ def simulate_incoming_call(
         case_history = _get_recent_cases(caller["investor_id"])
         call_history = _get_recent_calls(caller["investor_id"])
 
-    # ── Step 5b: Resolve call reason taxonomy ──────────────────────
+    # -- Step 5b: Resolve call reason taxonomy
     call_reason = None
     if call_reason_id:
         call_reason = _get_taxonomy(call_reason_id)
 
-    # ── Step 6: Assemble screen-pop ──────────────────────────────
+    # -- Step 6: Assemble screen-pop
     screen_pop = {
         "call_id": call_id,
         "ani": ani,
@@ -177,85 +184,94 @@ def simulate_incoming_call(
 
 
 def _get_taxonomy(taxonomy_id: int) -> dict | None:
-    with _ro_conn(settings.mcdr_cx_db_path) as conn:
-        row = conn.execute(
+    with _ro_cursor(settings.cx_db_params) as cur:
+        cur.execute(
             "SELECT taxonomy_id, category, subcategory, description "
-            "FROM case_taxonomy WHERE taxonomy_id = ?",
+            "FROM case_taxonomy WHERE taxonomy_id = %s",
             (taxonomy_id,),
-        ).fetchone()
+        )
+        row = cur.fetchone()
         return dict(row) if row else None
 
 
 def _pick_random_caller() -> dict | None:
-    with _ro_conn(settings.mcdr_mobile_db_path) as conn:
-        row = conn.execute(
-            "SELECT * FROM app_users WHERE status='Active' ORDER BY RANDOM() LIMIT 1"
-        ).fetchone()
+    with _ro_cursor(settings.mobile_db_params) as cur:
+        cur.execute(
+            "SELECT * FROM app_users WHERE status='Active' ORDER BY RAND() LIMIT 1"
+        )
+        row = cur.fetchone()
         return dict(row) if row else None
 
 
 def _lookup_by_ani(ani: str) -> dict | None:
-    with _ro_conn(settings.mcdr_mobile_db_path) as conn:
-        row = conn.execute("SELECT * FROM app_users WHERE mobile = ?", (ani,)).fetchone()
+    with _ro_cursor(settings.mobile_db_params) as cur:
+        cur.execute("SELECT * FROM app_users WHERE mobile = %s", (ani,))
+        row = cur.fetchone()
         return dict(row) if row else None
 
 
 def _get_investor(investor_id: int) -> dict | None:
-    with _ro_conn(settings.mcdr_core_db_path) as conn:
-        row = conn.execute("SELECT * FROM investors WHERE investor_id = ?", (investor_id,)).fetchone()
+    with _ro_cursor(settings.core_db_params) as cur:
+        cur.execute("SELECT * FROM investors WHERE investor_id = %s", (investor_id,))
+        row = cur.fetchone()
         return dict(row) if row else None
 
 
 def _get_portfolio(investor_id: int) -> dict | None:
-    with _ro_conn(settings.mcdr_core_db_path) as conn:
-        row = conn.execute(
+    with _ro_cursor(settings.core_db_params) as cur:
+        cur.execute(
             "SELECT COUNT(*) AS positions, SUM(quantity) AS total_shares, "
             "ROUND(SUM(quantity * avg_price), 2) AS total_value, "
             "COUNT(DISTINCT s.sector) AS sectors "
             "FROM holdings h JOIN securities s ON h.security_id = s.security_id "
-            "WHERE h.investor_id = ?",
+            "WHERE h.investor_id = %s",
             (investor_id,),
-        ).fetchone()
+        )
+        row = cur.fetchone()
         return dict(row) if row else None
 
 
 def _get_recent_cases(investor_id: int) -> list[dict]:
-    with _ro_conn(settings.mcdr_cx_db_path) as conn:
-        rows = conn.execute(
+    with _ro_cursor(settings.cx_db_params) as cur:
+        cur.execute(
             "SELECT c.case_id, c.case_number, c.priority, c.status, c.subject, "
             "t.category, t.subcategory, c.created_at "
             "FROM cases c JOIN case_taxonomy t ON c.taxonomy_id = t.taxonomy_id "
-            "WHERE c.investor_id = ? ORDER BY c.created_at DESC LIMIT 10",
+            "WHERE c.investor_id = %s ORDER BY c.created_at DESC LIMIT 10",
             (investor_id,),
-        ).fetchall()
+        )
+        rows = cur.fetchall()
         return [dict(r) for r in rows]
 
 
 def _get_recent_calls(investor_id: int) -> list[dict]:
-    with _ro_conn(settings.mcdr_cx_db_path) as conn:
-        rows = conn.execute(
+    with _ro_cursor(settings.cx_db_params) as cur:
+        cur.execute(
             "SELECT call_id, queue, status, duration_seconds, wait_seconds, call_start "
-            "FROM calls WHERE investor_id = ? ORDER BY call_start DESC LIMIT 10",
+            "FROM calls WHERE investor_id = %s ORDER BY call_start DESC LIMIT 10",
             (investor_id,),
-        ).fetchall()
+        )
+        rows = cur.fetchall()
         return [dict(r) for r in rows]
 
 
 def _pick_available_agent(queue: str) -> dict:
-    with _ro_conn(settings.mcdr_cx_db_path) as conn:
-        row = conn.execute(
-            "SELECT * FROM cx_users WHERE role IN ('agent', 'senior_agent') AND is_active=1 ORDER BY RANDOM() LIMIT 1"
-        ).fetchone()
+    with _ro_cursor(settings.cx_db_params) as cur:
+        cur.execute(
+            "SELECT * FROM cx_users WHERE role IN ('agent', 'senior_agent') AND is_active=1 ORDER BY RAND() LIMIT 1"
+        )
+        row = cur.fetchone()
         if not row:
             raise ValueError("No available agents in the system")
         return dict(row)
 
 
 def _get_agent_by_id(agent_id: int) -> dict:
-    with _ro_conn(settings.mcdr_cx_db_path) as conn:
-        row = conn.execute(
-            "SELECT * FROM cx_users WHERE user_id = ?", (agent_id,)
-        ).fetchone()
+    with _ro_cursor(settings.cx_db_params) as cur:
+        cur.execute(
+            "SELECT * FROM cx_users WHERE user_id = %s", (agent_id,)
+        )
+        row = cur.fetchone()
         return dict(row) if row else _pick_available_agent("general")
 
 

@@ -381,9 +381,27 @@ check("Agent CAN read case QA evals", r, 200)
 # ─── Data Integrity ──────────────────────────────────────────────
 section("10. DATA INTEGRITY")
 
-import sqlite3
-db = sqlite3.connect("mcdr_mock/mcdr_cx.db")
-db.row_factory = sqlite3.Row
+import os
+import pymysql
+import pymysql.cursors
+db = pymysql.connect(
+    host=os.environ.get("MYSQL_HOST", "localhost"),
+    port=int(os.environ.get("MYSQL_PORT", "3306")),
+    user=os.environ.get("MYSQL_USER", "mcdr"),
+    password=os.environ.get("MYSQL_PASSWORD", "mcdr_pass"),
+    database="mcdr_cx",
+    cursorclass=pymysql.cursors.DictCursor,
+)
+_db_cursor = db.cursor()
+
+class _DBExec:
+    def execute(self, sql, params=None):
+        _db_cursor.execute(sql, params or ())
+        return _db_cursor
+    def close(self):
+        db.close()
+
+db = _DBExec()
 
 # Role distribution
 roles = db.execute("SELECT r.name, COUNT(*) as cnt FROM users u JOIN roles r ON u.role_id = r.id GROUP BY r.name ORDER BY cnt DESC").fetchall()

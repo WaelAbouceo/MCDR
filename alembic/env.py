@@ -3,7 +3,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import pool
-from sqlalchemy.ext.asyncio import async_engine_from_config, create_async_engine
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from src.config import get_settings
 from src.database import Base
@@ -51,20 +51,7 @@ async def run_async_migrations() -> None:
 
 
 def run_migrations_online() -> None:
-    if settings.database_url.startswith("sqlite"):
-        import sqlite3
-        from alembic.ddl.impl import DefaultImpl
-
-        class SQLiteImpl(DefaultImpl):
-            __dialect__ = "sqlite"
-
-        connectable = sqlite3.connect(settings.database_url.replace("sqlite+aiosqlite:///", ""))
-        context.configure(connection=connectable, target_metadata=target_metadata)
-        with context.begin_transaction():
-            context.run_migrations()
-        connectable.close()
-    else:
-        asyncio.run(run_async_migrations())
+    asyncio.run(run_async_migrations())
 
 
 if context.is_offline_mode():

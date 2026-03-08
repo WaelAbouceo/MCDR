@@ -17,40 +17,46 @@ services:
       - "8000"
     env_file: .env
     depends_on:
-      cx-db:
-        condition: service_healthy
-      customer-db:
+      mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
 
-  cx-db:
-    image: postgres:16-alpine
+  mysql:
+    image: mysql:8.0
     environment:
-      POSTGRES_USER: ${CX_DB_USER:-mcdr}
-      POSTGRES_PASSWORD: ${CX_DB_PASSWORD:?Set CX_DB_PASSWORD in .env}
-      POSTGRES_DB: ${CX_DB_NAME:-mcdr}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_USER: ${MYSQL_USER:-mcdr}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
     volumes:
-      - cx_data:/var/lib/postgresql/data
-      - ./db/init_cx.sql:/docker-entrypoint-initdb.d/01_init.sql
+      - mysql_data:/var/lib/mysql
+      - ./db/init_core.sql:/docker-entrypoint-initdb.d/01_init_core.sql
+      - ./db/init_mobile.sql:/docker-entrypoint-initdb.d/02_init_mobile.sql
+      - ./db/init_cx.sql:/docker-entrypoint-initdb.d/03_init_cx.sql
+      - ./db/init_customer.sql:/docker-entrypoint-initdb.d/04_init_customer.sql
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CX_DB_USER:-mcdr}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-mcdr_root_pass}"]
       interval: 5s
-      retries: 5
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
-  customer-db:
-    image: postgres:16-alpine
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    ports:
+      - "8080:80"
     environment:
-      POSTGRES_USER: ${CUSTOMER_DB_USER:-mcdr_readonly}
-      POSTGRES_PASSWORD: ${CUSTOMER_DB_PASSWORD:?Set CUSTOMER_DB_PASSWORD in .env}
-      POSTGRES_DB: ${CUSTOMER_DB_NAME:-mcdr_customers}
-    volumes:
-      - customer_data:/var/lib/postgresql/data
-      - ./db/init_customer.sql:/docker-entrypoint-initdb.d/01_init.sql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${CUSTOMER_DB_USER:-mcdr_readonly}"]
-      interval: 5s
-      retries: 5
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD:-mcdr_root_pass}
+    depends_on:
+      mysql:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
@@ -60,6 +66,5 @@ services:
       retries: 5
 
 volumes:
-  cx_data:
-  customer_data:
+  mysql_data:
   frontend_dist:

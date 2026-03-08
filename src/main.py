@@ -186,9 +186,10 @@ async def readiness():
         healthy = False
 
     try:
-        import sqlite3
-        conn = sqlite3.connect(settings.mcdr_core_db_path, timeout=5)
-        conn.execute("SELECT 1")
+        import pymysql
+        conn = pymysql.connect(**settings.core_db_params, connect_timeout=5)
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
         conn.close()
         checks["core_database"] = "ok"
     except Exception as e:

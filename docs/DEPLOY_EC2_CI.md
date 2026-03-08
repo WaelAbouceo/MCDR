@@ -9,8 +9,8 @@ Pushes to `main` (and manual runs) trigger a GitHub Actions workflow that SSHs t
 The workflow assumes on the EC2 instance you already have:
 
 - `~/MCDR` – repo cloned (e.g. `git clone https://github.com/WaelAbouceo/MCDR.git ~/MCDR`)
-- `~/MCDR/.env` – production env (SECRET_KEY, CORS_ORIGINS, DB paths, etc.)
-- `~/MCDR/data/` – SQLite DBs (or run `./scripts/init_db_ec2.sh data` once)
+- `~/MCDR/.env` – production env (SECRET_KEY, CORS_ORIGINS, DATABASE_URL, CUSTOMER_DB_URL, etc.)
+- MySQL running (via Docker Compose or `docker compose up -d` once)
 
 If not, do that first (see [AWS_DEPLOYMENT.md](./AWS_DEPLOYMENT.md)).
 
@@ -63,4 +63,4 @@ Without an Elastic IP, the EC2 public IP can change after stop/start. Then you�
 | Workflow fails at SSH | Verify `EC2_HOST` (current public IP or Elastic IP) and `EC2_SSH_KEY` (full key, no extra spaces). |
 | "~/MCDR not found" | SSH to EC2 and clone the repo: `git clone https://github.com/WaelAbouceo/MCDR.git ~/MCDR`. |
 | Build fails on EC2 | Look at the workflow log; fix frontend/backend build or dependencies. |
-| Container exits after deploy | On EC2 run `docker logs mcdr`; fix .env or DB paths (see [AWS_DEPLOYMENT.md](./AWS_DEPLOYMENT.md)). |
+| Container exits after deploy | On EC2 run `docker logs mcdr`; fix .env or MySQL connection URLs (see [AWS_DEPLOYMENT.md](./AWS_DEPLOYMENT.md)). |

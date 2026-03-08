@@ -1,0 +1,39 @@
+# ─── MCDR CX Platform — Environment Configuration ────────────
+# Copy this file to .env and fill in production values.
+# NEVER commit .env to version control.
+
+# ─── Required in production ───────────────────────────────────
+ENVIRONMENT=development
+# Generate with: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY=change-me-to-a-random-64-char-hex-string
+
+# ─── MySQL ───────────────────────────────────────────────────
+
+MYSQL_ROOT_PASSWORD=McdrR00tStr0ng2026
+MYSQL_USER=mcdr_admin
+MYSQL_PASSWORD=McdrAdm1nStr0ng2026
+MYSQL_HOST=mysql
+MYSQL_PORT=3306
+
+
+# ─── Database URLs (SQLAlchemy) ──────────────────────────────
+# These are only used when running outside Docker (local dev).
+# Inside Docker, the URLs are built from MYSQL_USER/MYSQL_PASSWORD in docker-compose.
+DATABASE_URL=mysql+aiomysql://mcdr_admin:McdrAdm1nStr0ng2026@mysql:3306/mcdr_cx
+CUSTOMER_DB_URL=mysql+aiomysql://mcdr_admin:McdrAdm1nStr0ng2026@mysql:3306/mcdr_customer
+
+# Sync connection URLs for raw-SQL services
+MCDR_CORE_DB_URL=mysql+pymysql://mcdr_admin:McdrAdm1nStr0ng2026@mysql:3306/mcdr_core
+MCDR_MOBILE_DB_URL=mysql+pymysql://mcdr_admin:McdrAdm1nStr0ng2026@mysql:3306/mcdr_mobile
+MCDR_CX_DB_URL=mysql+pymysql://mcdr_admin:McdrAdm1nStr0ng2026@mysql:3306/mcdr_cx
+
+# ─── Auth ─────────────────────────────────────────────────────
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+# ─── CORS (comma-separated origins) ──────────────────────────
+CORS_ORIGINS=http://localhost:3000
+
+# ─── Infrastructure ──────────────────────────────────────────
+REDIS_URL=redis://redis:6379/0
+LOG_LEVEL=INFO
