@@ -147,7 +147,7 @@ export default function OutboundQueue() {
   const byType = s.by_type || {};
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <PhoneOutgoing size={24} /> Outbound Queue

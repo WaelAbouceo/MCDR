@@ -41,7 +41,7 @@ export default function InvestorSearch() {
   };
 
   return (
-    <div className="p-6 max-w-6xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold flex items-center gap-2">
         <Search size={24} /> Investor Lookup
       </h1>

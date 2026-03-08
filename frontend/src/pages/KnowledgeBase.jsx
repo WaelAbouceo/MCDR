@@ -40,7 +40,7 @@ export default function KnowledgeBase() {
   if (loading && articles.length === 0) return <Loader />;
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold flex items-center gap-2">
         <BookOpen size={24} /> Knowledge Base
       </h1>

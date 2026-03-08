@@ -30,7 +30,7 @@ export default function SLAMonitor() {
     .reduce((sum, r) => sum + (r.cnt || 0), 0);
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold flex items-center gap-2">
         <Shield size={24} /> SLA Monitor
       </h1>

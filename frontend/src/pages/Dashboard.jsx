@@ -101,7 +101,7 @@ export default function Dashboard() {
   const totalBreaches = (slaS.by_type_and_policy || []).reduce((s, r) => s + (r.cnt || 0), 0);
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold">
           {(role === 'agent' || role === 'senior_agent') ? 'My Dashboard' : role === 'admin' ? 'Admin Dashboard' : 'Operations Dashboard'}

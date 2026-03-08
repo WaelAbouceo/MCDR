@@ -38,7 +38,7 @@ export default function Escalations() {
   if (loading) return <Loader />;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-2">
         <AlertTriangle className="text-red-500" size={24} />
         <h1 className="text-2xl font-bold">Escalated Cases</h1>

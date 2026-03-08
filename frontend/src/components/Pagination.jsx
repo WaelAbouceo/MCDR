@@ -22,17 +22,18 @@ export default function Pagination({ offset, limit, total, onChange }) {
   }
 
   return (
-    <div className="flex items-center justify-between pt-4">
+    <div className="flex flex-wrap items-center justify-between gap-2 pt-4">
       <span className="text-sm text-slate-500">
         Showing {Math.min(offset + 1, total)}–{Math.min(offset + limit, total)} of {total}
       </span>
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1 flex-wrap justify-end">
         <button
           onClick={() => goTo(currentPage - 1)}
           disabled={currentPage <= 1}
-          className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed touch-manipulation"
+          aria-label="Previous page"
         >
-          <ChevronLeft size={16} />
+          <ChevronLeft size={20} />
         </button>
         {pages.map((p, i) =>
           p === '...' ? (
@@ -41,7 +42,7 @@ export default function Pagination({ offset, limit, total, onChange }) {
             <button
               key={p}
               onClick={() => goTo(p)}
-              className={`min-w-[32px] h-8 rounded text-sm font-medium ${
+              className={`min-w-[44px] h-11 rounded text-sm font-medium touch-manipulation ${
                 p === currentPage
                   ? 'bg-indigo-600 text-white'
                   : 'hover:bg-slate-100 text-slate-600'
@@ -54,9 +55,10 @@ export default function Pagination({ offset, limit, total, onChange }) {
         <button
           onClick={() => goTo(currentPage + 1)}
           disabled={currentPage >= totalPages}
-          className="p-1.5 rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed"
+          className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed touch-manipulation"
+          aria-label="Next page"
         >
-          <ChevronRight size={16} />
+          <ChevronRight size={20} />
         </button>
       </div>
     </div>

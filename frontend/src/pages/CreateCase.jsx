@@ -60,7 +60,7 @@ export default function CreateCase() {
   };
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-2xl mx-auto">
       <h1 className="text-2xl font-bold flex items-center gap-2 mb-6">
         <FolderPlus size={24} /> Create New Case
       </h1>
@@ -69,7 +69,7 @@ export default function CreateCase() {
       {(investorInfo || prefillCallId) && (
         <div className="card p-4 mb-6 bg-indigo-50 border-indigo-200">
           <p className="text-xs font-semibold text-indigo-600 mb-2">Case linked from incoming call</p>
-          <div className="flex gap-6 text-sm">
+          <div className="flex flex-wrap gap-3 text-sm">
             {investorInfo && (
               <div className="flex items-center gap-2">
                 <User size={16} className="text-indigo-500" />

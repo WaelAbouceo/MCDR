@@ -77,15 +77,15 @@ export default function IncomingCall({ callData, onClose }) {
   // ─── Minimized bar (persistent top strip while agent works) ───
   if (phase === 'connected' && view === 'minimized') {
     return (
-      <div className="fixed top-0 left-64 right-0 z-50 bg-indigo-700 text-white px-4 py-2 flex items-center justify-between shadow-lg">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <PhoneCall size={16} className="animate-pulse" />
-            <span className="font-semibold">{callerName}</span>
+      <div className="fixed top-0 left-0 md:left-64 right-0 z-50 bg-indigo-700 text-white px-3 sm:px-4 py-2 flex flex-wrap items-center justify-between gap-2 shadow-lg">
+        <div className="flex items-center gap-2 sm:gap-4 flex-wrap min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <PhoneCall size={16} className="animate-pulse shrink-0" />
+            <span className="font-semibold truncate">{callerName}</span>
           </div>
-          <span className="text-indigo-200 text-sm font-mono">{sp.ani}</span>
+          <span className="text-indigo-200 text-xs sm:text-sm font-mono truncate">{sp.ani}</span>
           {inv && (
-            <span className="text-indigo-200 text-xs">{inv.investor_code} · {inv.investor_type}</span>
+            <span className="text-indigo-200 text-xs truncate hidden sm:inline">{inv.investor_code} · {inv.investor_type}</span>
           )}
           {flags.length > 0 && (
             <div className="flex gap-1">
@@ -103,19 +103,19 @@ export default function IncomingCall({ callData, onClose }) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-indigo-200 text-sm font-mono flex items-center gap-1">
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+          <span className="text-indigo-200 text-xs sm:text-sm font-mono flex items-center gap-1">
             <Timer size={14} /> {mins}:{secs}
           </span>
           <button
             onClick={() => setView('expanded')}
-            className="bg-white/20 hover:bg-white/30 px-3 py-1 rounded text-sm flex items-center gap-1 transition-colors"
+            className="bg-white/20 hover:bg-white/30 px-2 sm:px-3 py-1.5 rounded text-sm flex items-center gap-1 transition-colors min-h-[44px]"
           >
             <Maximize2 size={14} /> Details
           </button>
           <button
             onClick={handleEndCall}
-            className="bg-red-500/80 hover:bg-red-500 px-3 py-1 rounded text-sm flex items-center gap-1 transition-colors"
+            className="bg-red-500/80 hover:bg-red-500 px-2 sm:px-3 py-1.5 rounded text-sm flex items-center gap-1 transition-colors min-h-[44px]"
           >
             <PhoneOff size={14} /> End
           </button>
@@ -126,61 +126,61 @@ export default function IncomingCall({ callData, onClose }) {
 
   // ─── Full expanded modal ──────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-6 px-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto pt-4 sm:pt-6 px-3 sm:px-4 pb-4">
       <div
         className="fixed inset-0 bg-black/50 backdrop-blur-sm"
         onClick={phase === 'connected' ? () => setView('minimized') : undefined}
       />
 
-      <div className={`relative w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden transition-all duration-300 ${
+      <div className={`relative w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden transition-all duration-300 my-auto ${
         phase === 'ringing' ? 'animate-pulse-border ring-4 ring-green-400/60' : ''
       }`}>
         {/* Header */}
-        <div className={`px-6 py-4 text-white ${phase === 'ringing' ? 'bg-green-600' : 'bg-indigo-700'}`}>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+        <div className={`px-4 sm:px-6 py-4 text-white ${phase === 'ringing' ? 'bg-green-600' : 'bg-indigo-700'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center shrink-0 ${
                 phase === 'ringing' ? 'bg-green-500 animate-bounce' : 'bg-indigo-600'
               }`}>
-                <PhoneCall size={24} />
+                <PhoneCall size={22} className="sm:w-6 sm:h-6" />
               </div>
-              <div>
-                <p className="text-sm opacity-80">
+              <div className="min-w-0">
+                <p className="text-xs sm:text-sm opacity-80">
                   {phase === 'ringing' ? 'Incoming Call' : `Connected · ${mins}:${secs}`}
                 </p>
-                <p className="text-xl font-bold">{sp.ani}</p>
+                <p className="text-lg sm:text-xl font-bold truncate">{sp.ani}</p>
                 <p className="text-xs opacity-70">Queue: {sp.queue}</p>
               </div>
             </div>
             {phase === 'ringing' && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 shrink-0">
                 <button
                   onClick={handleAccept}
-                  className="w-14 h-14 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors touch-manipulation"
                   title="Accept"
                 >
-                  <PhoneCall size={24} />
+                  <PhoneCall size={22} className="sm:w-6 sm:h-6" />
                 </button>
                 <button
                   onClick={handleDecline}
-                  className="w-14 h-14 rounded-full bg-red-500/80 hover:bg-red-500 flex items-center justify-center transition-colors"
+                  className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-red-500/80 hover:bg-red-500 flex items-center justify-center transition-colors touch-manipulation"
                   title="Decline"
                 >
-                  <PhoneOff size={24} />
+                  <PhoneOff size={22} className="sm:w-6 sm:h-6" />
                 </button>
               </div>
             )}
             {phase === 'connected' && (
-              <div className="flex gap-2">
+              <div className="flex gap-2 shrink-0">
                 <button
                   onClick={() => setView('minimized')}
-                  className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors"
+                  className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors min-h-[44px]"
                 >
                   <Minimize2 size={14} /> Minimize
                 </button>
                 <button
                   onClick={handleEndCall}
-                  className="bg-red-500/80 hover:bg-red-500 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors"
+                  className="bg-red-500/80 hover:bg-red-500 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition-colors min-h-[44px]"
                 >
                   <PhoneOff size={14} /> End
                 </button>
@@ -190,9 +190,9 @@ export default function IncomingCall({ callData, onClose }) {
         </div>
 
         {/* Body */}
-        <div className="bg-white max-h-[70vh] overflow-y-auto">
+        <div className="bg-white max-h-[min(70vh,80svh)] sm:max-h-[70vh] overflow-y-auto">
           {/* Investor identity */}
-          <div className="px-6 py-4 border-b border-slate-100">
+          <div className="px-4 sm:px-6 py-4 border-b border-slate-100">
             {inv ? (
               <div className="flex items-start gap-3">
                 <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-lg shrink-0">
@@ -219,7 +219,7 @@ export default function IncomingCall({ callData, onClose }) {
 
           {/* Risk Flags */}
           {flags.length > 0 && (
-            <div className="px-6 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2 flex-wrap">
+            <div className="px-4 sm:px-6 py-3 bg-red-50 border-b border-red-100 flex items-center gap-2 flex-wrap">
               <AlertTriangle size={16} className="text-red-500 shrink-0" />
               {flags.map((f, i) => (
                 <span key={i} className="badge bg-red-100 text-red-700 text-xs">{f.replace(/_/g, ' ')}</span>
@@ -229,8 +229,8 @@ export default function IncomingCall({ callData, onClose }) {
 
           {/* Portfolio */}
           {port && port.positions > 0 && (
-            <div className="px-6 py-3 border-b border-slate-100">
-              <div className="flex gap-6 text-sm">
+            <div className="px-4 sm:px-6 py-3 border-b border-slate-100">
+              <div className="flex flex-wrap gap-4 sm:gap-6 text-sm">
                 <div>
                   <p className="text-slate-400 text-xs">Positions</p>
                   <p className="font-semibold">{port.positions}</p>
@@ -251,7 +251,7 @@ export default function IncomingCall({ callData, onClose }) {
 
           {/* Open Cases */}
           {openCases.length > 0 && (
-            <div className="px-6 py-3 border-b border-slate-100">
+            <div className="px-4 sm:px-6 py-3 border-b border-slate-100">
               <p className="text-xs font-semibold text-amber-600 mb-2 flex items-center gap-1">
                 <AlertTriangle size={12} /> {openCases.length} Open Case{openCases.length > 1 ? 's' : ''}
               </p>
@@ -275,7 +275,7 @@ export default function IncomingCall({ callData, onClose }) {
 
           {/* Recent History */}
           {recentCases.length > 0 && (
-            <div className="px-6 py-3 border-b border-slate-100">
+            <div className="px-4 sm:px-6 py-3 border-b border-slate-100">
               <button
                 onClick={() => setShowHistory(!showHistory)}
                 className="text-xs font-semibold text-slate-500 flex items-center gap-1 w-full"
@@ -305,7 +305,7 @@ export default function IncomingCall({ callData, onClose }) {
 
           {/* Verification */}
           {phase === 'connected' && inv && (
-            <div className="px-6 py-3 border-b border-slate-100">
+            <div className="px-4 sm:px-6 py-3 border-b border-slate-100">
               {!showVerification ? (
                 <button
                   onClick={() => setShowVerification(true)}
@@ -334,7 +334,7 @@ export default function IncomingCall({ callData, onClose }) {
 
           {/* Actions */}
           {phase === 'connected' && (
-            <div className="px-6 py-4 flex gap-2">
+            <div className="px-4 sm:px-6 py-4 flex flex-col sm:flex-row gap-2">
               <button onClick={handleCreateCase} className="btn-primary text-sm flex-1 flex items-center justify-center gap-2">
                 <FolderPlus size={16} /> Create Case
               </button>

@@ -111,7 +111,7 @@ export default function Login() {
 
           <div className="mt-6 pt-6 border-t border-slate-200">
             <p className="text-xs text-slate-500 mb-3 text-center">Quick login as demo user</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {DEMO_USERS.map((u) => (
                 <button
                   key={u.username}

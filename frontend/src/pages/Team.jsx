@@ -38,7 +38,7 @@ export default function Team() {
   const totalAgents = Object.values(presenceSummary).reduce((a, b) => a + b, 0);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
       <h1 className="text-2xl font-bold flex items-center gap-2">
         <Users size={24} /> Team
       </h1>

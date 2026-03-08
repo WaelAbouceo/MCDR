@@ -143,7 +143,7 @@ export default function CaseDetail() {
   if (loading) return <Loader />;
   if (!caseData) {
     return (
-      <div className="p-6">
+      <div className="p-4 sm:p-6">
         <button onClick={() => navigate(-1)} className="btn-secondary mb-4">
           <ArrowLeft size={16} className="mr-1 inline" /> Back
         </button>
@@ -155,7 +155,7 @@ export default function CaseDetail() {
   const c = caseData;
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate(-1)} className="btn-secondary text-sm py-1.5 px-3">
           <ArrowLeft size={16} />
@@ -204,7 +204,7 @@ export default function CaseDetail() {
 
           {/* Tabs */}
           <div className="card">
-            <div className="flex border-b border-slate-200">
+            <div className="flex flex-wrap border-b border-slate-200">
               {[
                 { key: 'notes', label: 'Notes', icon: MessageSquare, count: notes.length },
                 { key: 'history', label: 'History', icon: History, count: history.length },

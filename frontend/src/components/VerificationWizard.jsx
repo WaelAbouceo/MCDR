@@ -93,16 +93,16 @@ export default function VerificationWizard({
 
   if (!session) {
     return (
-      <div className={`${compact ? '' : 'card p-5'}`}>
-        <div className="flex items-center justify-between">
+      <div className={`${compact ? '' : 'card p-4 sm:p-5'}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Lock size={16} className="text-amber-500" />
+            <Lock size={16} className="text-amber-500 shrink-0" />
             <span className="text-sm font-medium text-slate-700">Identity Verification</span>
           </div>
           <button
             onClick={handleStart}
             disabled={loading || !investorId}
-            className="btn-primary text-sm flex items-center gap-2"
+            className="btn-primary text-sm flex items-center gap-2 min-h-[44px]"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <Shield size={14} />}
             Start Verification
@@ -123,13 +123,13 @@ export default function VerificationWizard({
   const completedCount = Object.keys(completed).length;
 
   return (
-    <div className={`${compact ? '' : 'card p-5'} space-y-3`}>
+    <div className={`${compact ? '' : 'card p-4 sm:p-5'} space-y-3 ${compact ? '' : 'max-h-[85vh] overflow-y-auto'}`}>
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
           <Shield size={16} className={
             session.status === 'passed' ? 'text-green-500' :
-            session.status === 'failed' ? 'text-red-500' : 'text-blue-500'
+            session.status === 'failed' ? 'text-red-500' : 'text-blue-500 shrink-0'
           } />
           <span className="text-sm font-semibold text-slate-700">Identity Verification</span>
           <span className={`badge text-xs ${STATUS_STYLES[session.status] || ''}`}>
@@ -182,12 +182,12 @@ export default function VerificationWizard({
                 'border-slate-200 bg-white'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
                   <Icon size={14} className={
                     result === 'passed' ? 'text-green-600' :
                     result === 'failed' ? 'text-red-600' :
-                    isCurrent ? 'text-blue-600' : 'text-slate-400'
+                    isCurrent ? 'text-blue-600' : 'text-slate-400 shrink-0'
                   } />
                   <span className="text-sm font-medium">{config.label}</span>
                   {result && (
@@ -198,12 +198,12 @@ export default function VerificationWizard({
                 </div>
 
                 {isCurrent && (
-                  <div className="flex gap-1.5">
+                  <div className="flex gap-1.5 flex-shrink-0">
                     <button
                       onClick={() => handleStep(step, true)}
                       disabled={stepping === step}
-                      className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg
-                        flex items-center gap-1 transition-colors"
+                      className="bg-green-500 hover:bg-green-600 text-white text-xs px-3 py-2 sm:py-1.5 rounded-lg
+                        flex items-center gap-1 transition-colors min-h-[44px] touch-manipulation"
                     >
                       {stepping === step
                         ? <Loader2 size={12} className="animate-spin" />
@@ -213,8 +213,8 @@ export default function VerificationWizard({
                     <button
                       onClick={() => handleStep(step, false)}
                       disabled={stepping === step}
-                      className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-1.5 rounded-lg
-                        flex items-center gap-1 transition-colors"
+                      className="bg-red-500 hover:bg-red-600 text-white text-xs px-3 py-2 sm:py-1.5 rounded-lg
+                        flex items-center gap-1 transition-colors min-h-[44px] touch-manipulation"
                     >
                       <XCircle size={12} /> Fail
                     </button>
