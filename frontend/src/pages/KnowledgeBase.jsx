@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { cx } from '../lib/api';
+import { cx, aiApi } from '../lib/api';
 import Loader from '../components/Loader';
 import { BookOpen, Search, ChevronDown, ChevronUp } from 'lucide-react';
 
@@ -15,10 +15,18 @@ export default function KnowledgeBase() {
     const params = {};
     if (category) params.category = category;
     if (search) params.search = search;
-    cx.kbArticles(params)
-      .then(setArticles)
-      .catch(() => setArticles([]))
-      .finally(() => setLoading(false));
+    const useSemantic = search && search.trim().length > 2;
+    if (useSemantic) {
+      aiApi.kbSemanticSearch({ query: search.trim(), limit: 25, category: category || undefined })
+        .then(setArticles)
+        .catch(() => cx.kbArticles(params).then(setArticles).catch(() => setArticles([])))
+        .finally(() => setLoading(false));
+    } else {
+      cx.kbArticles(params)
+        .then(setArticles)
+        .catch(() => setArticles([]))
+        .finally(() => setLoading(false));
+    }
   };
 
   useEffect(() => {

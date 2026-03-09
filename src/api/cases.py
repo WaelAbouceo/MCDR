@@ -52,6 +52,17 @@ class CaseNoteBody(BaseModel):
     is_internal: bool = False
 
 
+@router.get("/check-duplicates")
+async def check_duplicates(
+    investor_id: int = Query(..., ge=1),
+    subject: str = Query(..., min_length=2),
+    days: int = Query(default=30, ge=1, le=90),
+    _: User = Depends(RequirePermission(Resource.CASE, Action.READ)),
+):
+    """Return recent cases for the same investor that may be similar (for duplicate warning)."""
+    return await cx.check_duplicate_cases(investor_id=investor_id, subject=subject, days=days)
+
+
 @router.post("", status_code=201)
 async def create_case(
     body: CaseCreateBody,

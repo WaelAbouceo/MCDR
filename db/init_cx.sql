@@ -310,6 +310,13 @@ CREATE TABLE IF NOT EXISTS kb_articles (
 
 CREATE INDEX idx_kb_category ON kb_articles(category);
 
+CREATE TABLE IF NOT EXISTS kb_article_embeddings (
+    article_id INT PRIMARY KEY,
+    embedding  JSON NOT NULL,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (article_id) REFERENCES kb_articles(article_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- ============================================================
 -- APPROVALS
 -- ============================================================

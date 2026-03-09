@@ -201,6 +201,39 @@ def list_cases_for_investor(investor_id: int, limit: int = 50) -> list[dict]:
         return [dict(r) for r in rows]
 
 
+def check_duplicate_cases(
+    investor_id: int,
+    subject: str,
+    days: int = 30,
+    limit: int = 5,
+) -> list[dict]:
+    """Return recent cases for the same investor that may be similar (same investor, subject word overlap)."""
+    if not subject or len(subject.strip()) < 2:
+        return []
+    subject_words = {w.lower() for w in subject.strip().split() if len(w) > 1}
+    if not subject_words:
+        return []
+    with _cx_conn() as conn:
+        rows = conn.execute(
+            _CASE_SELECT
+            + "WHERE c.investor_id = %s AND c.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY) "
+            "ORDER BY c.created_at DESC LIMIT 20",
+            (investor_id, days),
+        ).fetchall()
+    candidates = [dict(r) for r in rows]
+    similar = []
+    for c in candidates:
+        case_subject = (c.get("subject") or "").lower()
+        case_words = {w for w in case_subject.split() if len(w) > 1}
+        if subject_words & case_words:
+            similar.append(c)
+        if len(similar) >= limit:
+            break
+    if not similar and candidates:
+        similar = candidates[:limit]
+    return similar[:limit]
+
+
 def list_cases_for_agent(agent_id: int, status: str | None = None, limit: int = 50) -> list[dict]:
     query = _CASE_SELECT + "WHERE c.agent_id = %s"
     params: list = [agent_id]
@@ -567,6 +600,87 @@ RESOLUTION_CODES = {
 }
 
 
+def list_case_ids_for_sla_check(limit: int = 200) -> list[int]:
+    """Return case IDs that are open or in_progress and have an SLA policy (for periodic breach check)."""
+    with _cx_conn() as conn:
+        rows = conn.execute(
+            "SELECT case_id FROM cases WHERE status IN ('open', 'in_progress') "
+            "AND sla_policy_id IS NOT NULL ORDER BY created_at DESC LIMIT %s",
+            (limit,),
+        ).fetchall()
+        return [r["case_id"] for r in rows]
+
+
+def check_sla_and_auto_escalate(case_id: int) -> None:
+    """If case has SLA breach, record breach and auto-escalate. Used on case update and by periodic task."""
+    _check_sla_and_auto_escalate(case_id)
+
+
+def _check_sla_and_auto_escalate(case_id: int) -> None:
+    """If case has SLA breach, record breach and auto-escalate if not already escalated."""
+    with _cx_conn() as conn:
+        case = conn.execute("SELECT * FROM cases WHERE case_id = %s", (case_id,)).fetchone()
+        if not case or not case.get("sla_policy_id") or case.get("status") in ("resolved", "closed", "escalated"):
+            return
+        policy = conn.execute(
+            "SELECT * FROM sla_policies WHERE policy_id = %s AND is_active = 1",
+            (case["sla_policy_id"],),
+        ).fetchone()
+        if not policy:
+            return
+
+    created = _to_datetime(case.get("created_at"))
+    first_response_at = _to_datetime(case.get("first_response_at"))
+    resolved_at = _to_datetime(case.get("resolved_at"))
+    pending_minutes = (case.get("pending_seconds") or 0) / 60.0
+    if not created:
+        return
+    now_dt = datetime.now(timezone.utc)
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=timezone.utc)
+
+    def _to_utc(dt):
+        return dt if dt and getattr(dt, "tzinfo", None) else (dt.replace(tzinfo=timezone.utc) if dt else None)
+
+    end_frt = _to_utc(first_response_at) if first_response_at else now_dt
+    end_rt = _to_utc(resolved_at) if resolved_at else now_dt
+    frt_minutes = (end_frt - created).total_seconds() / 60.0 - pending_minutes
+    rt_minutes = (end_rt - created).total_seconds() / 60.0 - pending_minutes
+
+    policy_frt = float(policy.get("first_response_minutes") or 999999)
+    policy_rt = float(policy.get("resolution_minutes") or 999999)
+    frt_breach = frt_minutes > policy_frt
+    rt_breach = rt_minutes > policy_rt
+
+    with _cx_write_conn() as conn:
+        existing = conn.execute(
+            "SELECT breach_type FROM sla_breaches WHERE case_id = %s",
+            (case_id,),
+        ).fetchall()
+        existing_types = {r["breach_type"] for r in existing}
+        if frt_breach and "first_response" not in existing_types:
+            conn.execute(
+                "INSERT INTO sla_breaches (case_id, policy_id, breach_type, breached_at) VALUES (%s,%s,'first_response',%s)",
+                (case_id, case["sla_policy_id"], _now()),
+            )
+        if rt_breach and "resolution" not in existing_types:
+            conn.execute(
+                "INSERT INTO sla_breaches (case_id, policy_id, breach_type, breached_at) VALUES (%s,%s,'resolution',%s)",
+                (case_id, case["sla_policy_id"], _now()),
+            )
+        conn.commit()
+
+    if (frt_breach or rt_breach) and case.get("status") != "escalated":
+        reason = "Auto-escalated: SLA breach"
+        if frt_breach and rt_breach:
+            reason += " (first_response, resolution)"
+        elif frt_breach:
+            reason += " (first_response)"
+        else:
+            reason += " (resolution)"
+        create_escalation(case_id, from_agent_id=case.get("agent_id") or 1, reason=reason)
+
+
 def update_case(case_id: int, *, agent_id: int, **fields) -> dict | None:
     allowed = {"status", "priority", "subject", "description", "taxonomy_id", "resolution_code"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
@@ -675,6 +789,7 @@ def update_case(case_id: int, *, agent_id: int, **fields) -> dict | None:
                 (case_id, field, str(old.get(field)), str(new_val), agent_id, now),
             )
 
+    check_sla_and_auto_escalate(case_id)
     return get_case(case_id)
 
 

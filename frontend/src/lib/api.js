@@ -129,6 +129,14 @@ export const cases = {
   addNote: (id, body) => api.post(`/cases/${id}/notes`, body),
   markFirstResponse: (id) => api.post(`/cases/${id}/first-response`),
   transitions: (id) => api.get(`/cases/${id}/transitions`),
+  reassign: (id, body) => api.post(`/cases/${id}/reassign`, body),
+  checkDuplicates: (investorId, subject, days = 30) =>
+    api.get('/cases/check-duplicates', { params: { investor_id: investorId, subject, days } }),
+};
+
+export const aiApi = {
+  kbSemanticSearch: (body) => api.post('/ai/kb/semantic-search', body),
+  kbEmbedAll: () => api.post('/ai/kb/embed-all'),
 };
 
 export const cx = {

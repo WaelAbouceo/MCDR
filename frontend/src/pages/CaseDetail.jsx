@@ -19,6 +19,10 @@ import {
   Briefcase,
   PhoneCall,
   Shield,
+  BookOpen,
+  Search,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 export default function CaseDetail() {
@@ -41,10 +45,50 @@ export default function CaseDetail() {
   const [statusUpdate, setStatusUpdate] = useState('');
   const [resolutionCode, setResolutionCode] = useState('');
   const [allowedStatuses, setAllowedStatuses] = useState([]);
+  const [kbArticles, setKbArticles] = useState([]);
+  const [kbSearch, setKbSearch] = useState('');
+  const [kbExpandedId, setKbExpandedId] = useState(null);
+  const [kbPanelOpen, setKbPanelOpen] = useState(true);
+  const [kbLoading, setKbLoading] = useState(false);
 
   useEffect(() => {
     loadCase();
   }, [caseId]);
+
+  async function loadKbSuggestions() {
+    if (!caseData) return;
+    setKbLoading(true);
+    try {
+      const params = {};
+      if (caseData.subject) params.search = caseData.subject.slice(0, 50);
+      if (caseData.category) params.category = caseData.category;
+      const list = await cx.kbArticles(params);
+      setKbArticles(Array.isArray(list) ? list.slice(0, 5) : []);
+    } catch {
+      setKbArticles([]);
+    } finally {
+      setKbLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (caseData) loadKbSuggestions();
+  }, [caseData?.case_id, caseData?.subject, caseData?.category]);
+
+  async function searchKb() {
+    setKbLoading(true);
+    try {
+      const params = {};
+      if (kbSearch.trim()) params.search = kbSearch.trim();
+      if (caseData?.category) params.category = caseData.category;
+      const list = await cx.kbArticles(params);
+      setKbArticles(Array.isArray(list) ? list : []);
+    } catch {
+      setKbArticles([]);
+    } finally {
+      setKbLoading(false);
+    }
+  }
 
   async function loadCase() {
     setLoading(true);
@@ -419,6 +463,66 @@ export default function CaseDetail() {
               caseId={caseId}
             />
           )}
+
+          {/* Knowledge Base */}
+          <div className="card p-5">
+            <button
+              onClick={() => setKbPanelOpen(!kbPanelOpen)}
+              className="w-full flex items-center justify-between text-left"
+            >
+              <h3 className="text-sm font-semibold text-slate-600 flex items-center gap-2">
+                <BookOpen size={16} /> Knowledge Base
+              </h3>
+              {kbPanelOpen ? <ChevronUp size={16} className="text-slate-400" /> : <ChevronDown size={16} className="text-slate-400" />}
+            </button>
+            {kbPanelOpen && (
+              <div className="mt-3 space-y-3">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search articles..."
+                      value={kbSearch}
+                      onChange={(e) => setKbSearch(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && searchKb()}
+                      className="input pl-8 py-1.5 text-sm w-full"
+                    />
+                  </div>
+                  <button onClick={searchKb} disabled={kbLoading} className="btn-secondary text-sm py-1.5 px-2">
+                    {kbLoading ? '…' : 'Search'}
+                  </button>
+                </div>
+                {kbArticles.length === 0 && !kbLoading ? (
+                  <p className="text-xs text-slate-400">No articles found. Try a different search.</p>
+                ) : (
+                  <div className="space-y-1 max-h-64 overflow-y-auto">
+                    {kbArticles.map((art) => (
+                      <div key={art.article_id} className="border border-slate-100 rounded-lg overflow-hidden">
+                        <button
+                          onClick={() => setKbExpandedId(kbExpandedId === art.article_id ? null : art.article_id)}
+                          className="w-full px-3 py-2 text-left text-sm font-medium text-slate-800 hover:bg-slate-50 flex items-center justify-between gap-2"
+                        >
+                          <span className="truncate">{art.title}</span>
+                          {kbExpandedId === art.article_id ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                        {kbExpandedId === art.article_id && (
+                          <div className="px-3 pb-3 pt-0 border-t border-slate-100">
+                            <pre className="text-xs text-slate-600 whitespace-pre-wrap font-sans mt-2">{art.content}</pre>
+                            {art.category && (
+                              <span className="inline-block mt-2 px-1.5 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] rounded">
+                                {art.category}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Case Details */}
           <div className="card p-5">

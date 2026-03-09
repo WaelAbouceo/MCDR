@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     log_level: str = "INFO"
+    # AI: enabled by default; set OPENAI_API_KEY to activate semantic search, categorization, etc.
+    openai_api_key: str = ""
+    ai_enabled: bool = True
 
     mcdr_core_db_url: str = "mysql+pymysql://mcdr:mcdr_pass@localhost:3306/mcdr_core"
     mcdr_mobile_db_url: str = "mysql+pymysql://mcdr:mcdr_pass@localhost:3306/mcdr_mobile"

@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { cases, cx, registry } from '../lib/api';
-import { FolderPlus, PhoneCall, User } from 'lucide-react';
+import { FolderPlus, PhoneCall, User, AlertTriangle } from 'lucide-react';
+import { formatDistanceToNow } from 'date-fns';
 
 export default function CreateCase() {
   const navigate = useNavigate();
@@ -22,6 +23,7 @@ export default function CreateCase() {
   const [selectedCategory, setSelectedCategory] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [duplicateCases, setDuplicateCases] = useState([]);
 
   const categories = useMemo(() => [...new Set(taxonomy.map(t => t.category))], [taxonomy]);
   const subcategories = useMemo(
@@ -37,6 +39,26 @@ export default function CreateCase() {
         .catch(() => {});
     }
   }, [prefillInvestorId]);
+
+  async function checkDuplicates() {
+    const investorId = form.investor_id ? parseInt(form.investor_id, 10) : 0;
+    const subject = (form.subject || '').trim();
+    if (!investorId || investorId < 1 || subject.length < 2) {
+      setDuplicateCases([]);
+      return;
+    }
+    try {
+      const list = await cases.checkDuplicates(investorId, subject);
+      setDuplicateCases(Array.isArray(list) ? list : []);
+    } catch {
+      setDuplicateCases([]);
+    }
+  }
+
+  useEffect(() => {
+    const t = setTimeout(checkDuplicates, 400);
+    return () => clearTimeout(t);
+  }, [form.investor_id, form.subject]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -84,6 +106,33 @@ export default function CreateCase() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Duplicate case warning */}
+      {duplicateCases.length > 0 && (
+        <div className="card p-4 mb-6 bg-amber-50 border-amber-200">
+          <p className="text-sm font-semibold text-amber-800 flex items-center gap-2 mb-2">
+            <AlertTriangle size={16} /> Similar recent cases for this investor
+          </p>
+          <ul className="space-y-1.5 text-sm">
+            {duplicateCases.map((dc) => (
+              <li key={dc.case_id}>
+                <button
+                  type="button"
+                  onClick={() => navigate(`/cases/${dc.case_id}`)}
+                  className="text-indigo-600 hover:underline font-mono text-xs mr-2"
+                >
+                  {dc.case_number || `#${dc.case_id}`}
+                </button>
+                <span className="text-slate-600 truncate">{dc.subject}</span>
+                <span className="text-slate-400 text-xs ml-2">
+                  {dc.status} {dc.created_at ? formatDistanceToNow(new Date(dc.created_at), { addSuffix: true }) : ''}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-amber-700 mt-2">Consider whether this is a duplicate before creating.</p>
         </div>
       )}
 

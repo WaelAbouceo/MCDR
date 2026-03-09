@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from src.api import (
+    ai,
     approvals, audit, auth, cases, customers, cx_data, escalations,
     outbound, qa, registry, reports, simulate, sla, telephony, users,
     verification,
@@ -18,6 +19,7 @@ _sub_routers = [
     qa.router,
     cx_data.router,
     simulate.router,
+    ai.router,
     audit.router,
     reports.router,
     outbound.router,

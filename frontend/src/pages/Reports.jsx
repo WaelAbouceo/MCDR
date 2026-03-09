@@ -3,9 +3,20 @@ import { cxReports } from '../lib/api';
 import StatCard from '../components/StatCard';
 import Loader from '../components/Loader';
 import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+} from 'recharts';
+import { jsPDF } from 'jspdf';
+import {
   BarChart3,
   Target,
-  PhoneCall,
   AlertTriangle,
   TrendingUp,
   Shield,
@@ -15,6 +26,7 @@ import {
   Calendar,
   RotateCcw,
   Tag,
+  FileDown,
 } from 'lucide-react';
 
 export default function Reports() {
@@ -74,6 +86,42 @@ export default function Reports() {
     URL.revokeObjectURL(url);
   };
 
+  const handleExportPdf = () => {
+    const doc = new jsPDF();
+    doc.setFontSize(18);
+    doc.text('MCDR Operations Report', 14, 20);
+    doc.setFontSize(11);
+    doc.text(`Period: Last ${days} days | Generated: ${new Date().toISOString().slice(0, 10)}`, 14, 28);
+    let y = 38;
+    doc.setFontSize(12);
+    doc.text('KPIs', 14, y);
+    y += 8;
+    doc.setFontSize(10);
+    doc.text(`Total Cases: ${totalCases}  |  Resolved: ${totalResolved}  |  Escalated: ${totalEscalated}`, 14, y);
+    y += 6;
+    doc.text(`FCR: ${kpis.fcr_pct}%  |  AHT (min): ${kpis.avg_handling_time_min ?? '—'}  |  Escalation Rate: ${kpis.escalation_rate_pct}%`, 14, y);
+    y += 10;
+    doc.setFontSize(12);
+    doc.text('Case Volume by Date', 14, y);
+    y += 6;
+    doc.setFontSize(9);
+    volume.slice(0, 14).forEach((r) => {
+      doc.text(`${r.day}: Total ${r.total}, Resolved ${r.resolved}, Escalated ${r.escalated}`, 14, y);
+      y += 5;
+    });
+    y += 8;
+    doc.setFontSize(12);
+    doc.text('SLA Compliance', 14, y);
+    y += 6;
+    doc.setFontSize(9);
+    compliance.forEach((c) => {
+      doc.text(`${c.policy_name}: ${c.compliance_pct}% (${c.total_cases} cases)`, 14, y);
+      y += 5;
+    });
+    if (y > 270) doc.addPage();
+    doc.save(`mcdr-report-${days}d-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -97,8 +145,49 @@ export default function Reports() {
           <button onClick={handleExport} className="btn-secondary text-sm flex items-center gap-2">
             <Download size={14} /> Export CSV
           </button>
+          <button onClick={handleExportPdf} className="btn-secondary text-sm flex items-center gap-2">
+            <FileDown size={14} /> Export PDF
+          </button>
         </div>
       </div>
+
+      {/* Charts */}
+      {volume.length > 0 && (
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-slate-600 mb-4">Case Volume Over Time</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={volume}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} stroke="#64748b" />
+                <YAxis tick={{ fontSize: 11 }} stroke="#64748b" />
+                <Tooltip />
+                <Line type="monotone" dataKey="total" stroke="#4f46e5" strokeWidth={2} name="Total" dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="resolved" stroke="#22c55e" strokeWidth={1.5} name="Resolved" dot={{ r: 2 }} />
+                <Line type="monotone" dataKey="escalated" stroke="#f59e0b" strokeWidth={1.5} name="Escalated" dot={{ r: 2 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
+      {compliance.length > 0 && (
+        <div className="card p-5">
+          <h3 className="text-sm font-semibold text-slate-600 mb-4 flex items-center gap-2">
+            <Shield size={16} /> SLA Compliance (Bar)
+          </h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={compliance} margin={{ top: 5, right: 20, left: 5, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="policy_name" tick={{ fontSize: 10 }} stroke="#64748b" />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} stroke="#64748b" />
+                <Tooltip />
+                <Bar dataKey="compliance_pct" fill="#4f46e5" name="Compliance %" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4">

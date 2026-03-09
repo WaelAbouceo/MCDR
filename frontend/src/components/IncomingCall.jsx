@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { simulate } from '../lib/api';
+import { simulate, cx } from '../lib/api';
 import { StatusBadge } from './StatusBadge';
 import VerificationWizard from './VerificationWizard';
 import {
@@ -17,6 +17,7 @@ import {
   FolderOpen,
   Timer,
   Shield,
+  BookOpen,
 } from 'lucide-react';
 
 export default function IncomingCall({ callData, onClose }) {
@@ -27,8 +28,24 @@ export default function IncomingCall({ callData, onClose }) {
   const [elapsed, setElapsed] = useState(0);
   const [verified, setVerified] = useState(false);
   const [showVerification, setShowVerification] = useState(false);
+  const [suggestedArticles, setSuggestedArticles] = useState([]);
 
   const sp = callData?.screen_pop;
+
+  useEffect(() => {
+    if (!sp) {
+      setSuggestedArticles([]);
+      return;
+    }
+    const category = sp.call_reason?.category || null;
+    const searchTerm = sp.call_reason?.subcategory || (sp.ivr_path ? `IVR ${sp.ivr_path}` : null);
+    const params = {};
+    if (category) params.category = category;
+    if (searchTerm) params.search = searchTerm;
+    cx.kbArticles(params)
+      .then((list) => setSuggestedArticles(Array.isArray(list) ? list.slice(0, 3) : []))
+      .catch(() => setSuggestedArticles([]));
+  }, [sp?.call_id, sp?.call_reason?.category, sp?.call_reason?.subcategory, sp?.ivr_path]);
 
   useEffect(() => {
     if (phase !== 'connected') return;
@@ -300,6 +317,34 @@ export default function IncomingCall({ callData, onClose }) {
                   ))}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Suggested Articles */}
+          {suggestedArticles.length > 0 && (
+            <div className="px-4 sm:px-6 py-3 border-b border-slate-100">
+              <p className="text-xs font-semibold text-slate-600 mb-2 flex items-center gap-1">
+                <BookOpen size={12} /> Suggested Articles
+              </p>
+              <div className="space-y-1.5">
+                {suggestedArticles.map((art) => (
+                  <div
+                    key={art.article_id}
+                    className="text-sm bg-indigo-50 hover:bg-indigo-100 rounded-lg px-3 py-2 border border-indigo-100"
+                  >
+                    <p className="font-medium text-slate-800 truncate">{art.title}</p>
+                    {art.category && (
+                      <span className="text-[10px] text-indigo-600 font-medium">{art.category}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => { setView('minimized'); navigate('/kb'); }}
+                className="mt-2 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                Open Knowledge Base →
+              </button>
             </div>
           )}
 
